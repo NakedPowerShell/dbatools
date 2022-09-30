@@ -1,62 +1,67 @@
 function Set-DbaErrorLogConfig {
     <#
-        .SYNOPSIS
-            Set the configuration for the ErrorLog on a given SQL Server instance
+    .SYNOPSIS
+        Set the configuration for the ErrorLog on a given SQL Server instance
 
-        .DESCRIPTION
-            Sets the number of log files configured on all versions, and size in KB in SQL Server 2012+ and above.
+    .DESCRIPTION
+        Sets the number of log files configured on all versions, and size in KB in SQL Server 2012+ and above.
 
-            To set the Path to the ErrorLog, use Set-DbaStartupParameter -ErrorLog. Note that this command requires
-            remote, administrative access to the Windows/WMI server, similar to SQL Configuration Manager.
+        To set the Path to the ErrorLog, use Set-DbaStartupParameter -ErrorLog. Note that this command requires
+        remote, administrative access to the Windows/WMI server, similar to SQL Configuration Manager.
 
-        .PARAMETER SqlInstance
-            The target SQL Server instance(s)
+    .PARAMETER SqlInstance
+        The target SQL Server instance or instances
 
-        .PARAMETER SqlCredential
-            Login to the target instance using alternative credentials. Windows and SQL Authentication supported. Accepts credential objects (Get-Credential)
+    .PARAMETER SqlCredential
+        Login to the target instance using alternative credentials. Accepts PowerShell credentials (Get-Credential).
 
-        .PARAMETER LogCount
-            Integer value between 6 and 99 for setting the number of error log files to keep for SQL Server instance.
+        Windows Authentication, SQL Server Authentication, Active Directory - Password, and Active Directory - Integrated are all supported.
 
-        .PARAMETER LogSize
-            Integer value for the size in KB that you want the error log file to grow. This is feature only in SQL Server 2012 and higher. When the file reaches that limit SQL Server will roll the error log over.
+        For MFA support, please use Connect-DbaInstance.
 
-        .PARAMETER WhatIf
-            If this switch is enabled, no actions are performed but informational messages will be displayed that explain what would happen if the command were to run.
+    .PARAMETER LogCount
+        Integer value between 6 and 99 for setting the number of error log files to keep for SQL Server instance.
 
-        .PARAMETER Confirm
-            If this switch is enabled, you will be prompted for confirmation before executing any operations that change state.
+    .PARAMETER LogSize
+        Integer value for the size in KB that you want the error log file to grow. This is feature only in SQL Server 2012 and higher. When the file reaches that limit SQL Server will roll the error log over.
 
-        .PARAMETER EnableException
-            By default, when something goes wrong we try to catch it, interpret it and give you a friendly warning message.
-            This avoids overwhelming you with "sea of red" exceptions, but is inconvenient because it basically disables advanced scripting.
-            Using this switch turns this "nice by default" feature off and enables you to catch exceptions with your own try/catch.
+    .PARAMETER WhatIf
+        If this switch is enabled, no actions are performed but informational messages will be displayed that explain what would happen if the command were to run.
 
-        .NOTES
-            Tags: Instance, ErrorLog
-            Author: Shawn Melton (@wsmelton)
+    .PARAMETER Confirm
+        If this switch is enabled, you will be prompted for confirmation before executing any operations that change state.
 
-            Website: https://dbatools.io
-            Copyright: (C) Chrissy LeMaire, clemaire@gmail.com
-            License: MIT https://opensource.org/licenses/MIT
+    .PARAMETER EnableException
+        By default, when something goes wrong we try to catch it, interpret it and give you a friendly warning message.
+        This avoids overwhelming you with "sea of red" exceptions, but is inconvenient because it basically disables advanced scripting.
+        Using this switch turns this "nice by default" feature off and enables you to catch exceptions with your own try/catch.
 
-        .LINK
-            https://dbatools.io/Set-DbaErrorLogConfig
+    .NOTES
+        Tags: Instance, ErrorLog, Logging
+        Author: Shawn Melton (@wsmelton), wsmelton.github.com
 
-       .EXAMPLE
-            Set-DbaErrorLogConfig -SqlInstance sql2017,sql2014 -LogCount 25
+        Website: https://dbatools.io
+        Copyright: (c) 2018 by dbatools, licensed under MIT
+        License: MIT https://opensource.org/licenses/MIT
 
-            Sets the number of error log files to 25 on sql2017 and sql2014
+    .LINK
+        https://dbatools.io/Set-DbaErrorLogConfig
 
-        .EXAMPLE
-            Set-DbaErrorLogConfig -SqlInstance sql2014 -LogSize 102400
+    .EXAMPLE
+        PS C:\> Set-DbaErrorLogConfig -SqlInstance sql2017,sql2014 -LogCount 25
 
-            Sets the size of the error log file, before it rolls over, to 102400 KB (100 MB) on sql2014
+        Sets the number of error log files to 25 on sql2017 and sql2014
 
-        .EXAMPLE
-            Set-DbaErrorLogConfig -SqlInstance sql2012 -LogCount 25 -LogSize 500
+    .EXAMPLE
+        PS C:\> Set-DbaErrorLogConfig -SqlInstance sql2014 -LogSize 102400
 
-            Sets the number of error log files to 25 and size before it will roll over to 500 KB on sql2012
+        Sets the size of the error log file, before it rolls over, to 102400 KB (100 MB) on sql2014
+
+    .EXAMPLE
+        PS C:\> Set-DbaErrorLogConfig -SqlInstance sql2012 -LogCount 25 -LogSize 500
+
+        Sets the number of error log files to 25 and size before it will roll over to 500 KB on sql2012
+
     #>
     [cmdletbinding(SupportsShouldProcess)]
     param(
@@ -70,11 +75,9 @@ function Set-DbaErrorLogConfig {
     )
     process {
         foreach ($instance in $SqlInstance) {
-            Write-Message -Level Verbose -Message "Connecting to $instance"
             try {
-                $server = Connect-SqlInstance -SqlInstance $instance -SqlCredential $SqlCredential
-            }
-            catch {
+                $server = Connect-DbaInstance -SqlInstance $instance -SqlCredential $SqlCredential
+            } catch {
                 Stop-Function -Message "Failure" -Category ConnectionError -ErrorRecord $_ -Target $instance -Continue
             }
 
@@ -82,11 +85,11 @@ function Set-DbaErrorLogConfig {
             $currentLogSize = $server.ErrorLogSizeKb
 
             $collection = [PSCustomObject]@{
-                ComputerName              = $server.NetName
-                InstanceName              = $server.ServiceName
-                SqlInstance               = $server.DomainInstanceName
-                LogCount                  = $currentNumLogs
-                LogSize                   = [dbasize]($currentLogSize * 1024)
+                ComputerName = $server.ComputerName
+                InstanceName = $server.ServiceName
+                SqlInstance  = $server.DomainInstanceName
+                LogCount     = $currentNumLogs
+                LogSize      = [dbasize]($currentLogSize * 1024)
             }
             if (Test-Bound -ParameterName 'LogSize') {
                 if ($server.VersionMajor -lt 11) {
@@ -94,14 +97,12 @@ function Set-DbaErrorLogConfig {
                 }
                 if ($LogSize -eq $currentLogSize) {
                     Write-Message -Level Warning -Message "The provided value for LogSize is already set to $LogSize KB on $instance"
-                }
-                else {
+                } else {
                     if ($PSCmdlet.ShouldProcess($server, "Updating log size from [$currentLogSize] to [$LogSize]")) {
                         try {
                             $server.ErrorLogSizeKb = $LogSize
                             $server.Alter()
-                        }
-                        catch {
+                        } catch {
                             Stop-Function -Message "Issue setting number of log files on $instance" -Target $instance -ErrorRecord $_ -Exception $_.Exception.InnerException.InnerException.InnerException -Continue
                         }
                     }
@@ -115,14 +116,12 @@ function Set-DbaErrorLogConfig {
             if (Test-Bound -ParameterName 'LogCount') {
                 if ($LogCount -eq $currentNumLogs) {
                     Write-Message -Level Warning -Message "The provided value for LogCount is already set to $LogCount on $instance"
-                }
-                else {
+                } else {
                     if ($PSCmdlet.ShouldProcess($server, "Setting number of logs from [$currentNumLogs] to [$LogCount]")) {
                         try {
                             $server.NumberOfLogFiles = $LogCount
                             $server.Alter()
-                        }
-                        catch {
+                        } catch {
                             Stop-Function -Message "Issue setting number of log files on $instance" -Target $instance -ErrorRecord $_ -Exception $_.Exception.InnerException.InnerException.InnerException -Continue
                         }
                     }

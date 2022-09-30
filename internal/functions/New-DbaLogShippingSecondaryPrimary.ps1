@@ -73,7 +73,7 @@ function New-DbaLogShippingSecondaryPrimary {
         .NOTES
             Author: Sander Stad (@sqlstad, sqlstad.nl)
             Website: https://dbatools.io
-            Copyright: (C) Chrissy LeMaire, clemaire@gmail.com
+            Copyright: (c) 2018 by dbatools, licensed under MIT
             License: MIT https://opensource.org/licenses/MIT
 
         .LINK
@@ -82,100 +82,90 @@ function New-DbaLogShippingSecondaryPrimary {
         .EXAMPLE
             New-DbaLogShippingSecondaryPrimary -SqlInstance sql2 -BackupSourceDirectory "\\sql1\logshipping\DB1" -BackupDestinationDirectory D:\Data\logshippingdestination\DB1_DR -CopyJob LSCopy_sql2_DB1_DR -FileRetentionPeriod 4320 -MonitorServer sql2 -MonitorServerSecurityMode 'Windows' -PrimaryServer sql1 -PrimaryDatabase DB1 -RestoreJob LSRestore_sql2_DB1_DR
     #>
-    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = "Low")]
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = "Low")]
     param (
-        [parameter(Mandatory = $true)]
-        [Alias("ServerInstance", "SqlServer")]
+        [parameter(Mandatory)]
         [object]$SqlInstance,
         [PSCredential]$SqlCredential,
-        [Parameter(Mandatory = $true)]
+        [Parameter(Mandatory)]
         [ValidateNotNullOrEmpty()]
         [string]$BackupSourceDirectory,
-        [Parameter(Mandatory = $false)]
         [string]$BackupDestinationDirectory,
-        [Parameter(Mandatory = $true)]
+        [Parameter(Mandatory)]
         [ValidateNotNullOrEmpty()]
         [string]$CopyJob,
         [int]$FileRetentionPeriod = 14420,
         [string]$MonitorServer,
         [PSCredential]$MonitorCredential,
-        [Parameter(Mandatory = $true)]
+        [Parameter(Mandatory)]
         [ValidateSet(0, "sqlserver", 1, "windows")]
         [object]$MonitorServerSecurityMode = 1,
         [object]$PrimaryServer,
         [PSCredential]$PrimarySqlCredential,
         [object]$PrimaryDatabase,
-        [Parameter(Mandatory = $true)]
+        [Parameter(Mandatory)]
         [ValidateNotNullOrEmpty()]
         [string]$RestoreJob,
-        [Alias('Silent')]
         [switch]$EnableException,
         [switch]$Force
     )
 
     # Try connecting to the instance
-    Write-Message -Message "Connecting to $SqlInstance" -Level Verbose
     try {
-        $ServerSecondary = Connect-SqlInstance -SqlInstance $SqlInstance -SqlCredential $SqlCredential
-    }
-    catch {
-        Stop-Function -Message "Failure" -Category ConnectionError -ErrorRecord $_ -Target $SqlInstance -Continue
+        $ServerSecondary = Connect-DbaInstance -SqlInstance $SqlInstance -SqlCredential $SqlCredential
+    } catch {
+        Stop-Function -Message "Failure" -Category ConnectionError -ErrorRecord $_ -Target $SqlInstance
+        return
     }
 
     # Try connecting to the instance
-    Write-Message -Message "Connecting to $PrimaryServer" -Level Verbose
     try {
-        $ServerPrimary = Connect-SqlInstance -SqlInstance $PrimaryServer -SqlCredential $PrimarySqlCredential
-    }
-    catch {
-        Stop-Function -Message "Failure" -Category ConnectionError -ErrorRecord $_ -Target $PrimaryServer -Continue
+        $ServerPrimary = Connect-DbaInstance -SqlInstance $PrimaryServer -SqlCredential $PrimarySqlCredential
+    } catch {
+        Stop-Function -Message "Failure" -Category ConnectionError -ErrorRecord $_ -Target $PrimaryServer
+        return
     }
 
     # Check if the backup UNC path is correct and reachable
     if ([bool]([uri]$BackupDestinationDirectory).IsUnc -and $BackupDestinationDirectory -notmatch '^\\(?:\\[^<>:`"/\\|?*]+)+$') {
         Stop-Function -Message "The backup destination path should be formatted in the form \\server\share." -Target $SqlInstance
         return
-    }
-    else {
+    } else {
         if (-not ((Test-Path $BackupDestinationDirectory -PathType Container -IsValid) -and ((Get-Item $BackupDestinationDirectory).PSProvider.Name -eq 'FileSystem'))) {
             Stop-Function -Message "The backup destination path is not valid or can't be reached." -Target $SqlInstance
             return
         }
     }
 
-    # Check the MonitorServer
-    if ($Force -and -not $MonitorServer) {
-        $MonitorServer = $SqlInstance
-        Write-Message -Message "Setting monitor server to $MonitorServer." -Level Verbose
-    }
+    # Check if MonitorServer is provided
+    if ($MonitorServer) {
+        # Check of the MonitorServerSecurityMode value is of type string and set the integer value
+        if ($MonitorServerSecurityMode -notin 0, 1) {
+            $MonitorServerSecurityMode = switch ($MonitorServerSecurityMode) { "WINDOWS" { 1 } "SQLSERVER" { 0 } }
+            Write-Message -Message "Setting monitor server security mode to $MonitorServerSecurityMode." -Level Verbose
+        }
 
-    # Check of the MonitorServerSecurityMode value is of type string and set the integer value
-    if ($MonitorServerSecurityMode -notin 0, 1) {
-        $MonitorServerSecurityMode = switch ($MonitorServerSecurityMode) {"WINDOWS" { 1 } "SQLSERVER" { 0 } }
-        Write-Message -Message "Setting monitor server security mode to $MonitorServerSecurityMode." -Level Verbose
-    }
+        # Check the MonitorServerSecurityMode if it's SQL Server authentication
+        if ($MonitorServerSecurityMode -eq 0 -and -not $MonitorCredential) {
+            Stop-Function -Message "The MonitorServerCredential cannot be empty when using SQL Server authentication." -Target $SqlInstance -Continue
+            return
+        } elseif ($MonitorServerSecurityMode -eq 0 -and $MonitorCredential) {
+            # Get the username and password from the credential
+            $MonitorLogin = $MonitorCredential.UserName
+            $MonitorPassword = $MonitorCredential.GetNetworkCredential().Password
 
-    # Check the MonitorServerSecurityMode if it's SQL Server authentication
-    if ($MonitorServerSecurityMode -eq 0 -and -not $MonitorCredential) {
-        Stop-Function -Message "The MonitorServerCredential cannot be empty when using SQL Server authentication." -Target $SqlInstance -Continue
-        return
-    }
-    elseif ($MonitorServerSecurityMode -eq 0 -and $MonitorCredential) {
-        # Get the username and password from the credential
-        $MonitorLogin = $MonitorCredential.UserName
-        $MonitorPassword = $MonitorCredential.GetNetworkCredential().Password
+            # Check if the user is in the database
+            if ($ServerSecondary.Databases['master'].Users.Name -notcontains $MonitorLogin) {
+                Stop-Function -Message "User $MonitorLogin for monitor login must be in the master database." -Target $SqlInstance -Continue
+                return
+            }
+        }
 
-        # Check if the user is in the database
-        if ($ServerSecondary.Databases['master'].Users.Name -notcontains $MonitorLogin) {
-            Stop-Function -Message "User $MonitorLogin for monitor login must be in the master database." -Target $SqlInstance -Continue
+        # Check if the database is present on the primary sql server
+        if ($ServerPrimary.Databases.Name -notcontains $PrimaryDatabase) {
+            Stop-Function -Message "Database $PrimaryDatabase is not available on instance $PrimaryServer" -Target $PrimaryServer -Continue
             return
         }
-    }
-
-    # Check if the database is present on the primary sql server
-    if ($ServerPrimary.Databases.Name -notcontains $PrimaryDatabase) {
-        Stop-Function -Message "Database $PrimaryDatabase is not available on instance $PrimaryServer" -Target $PrimaryServer -Continue
-        return
     }
 
     # Set up the query
@@ -209,23 +199,21 @@ function New-DbaLogShippingSecondaryPrimary {
 
     if ($ServerSecondary.Version.Major -gt 9) {
         $Query += ",@overwrite = 1;"
-    }
-    else {
+    } else {
         $Query += ";"
     }
 
     # Execute the query to add the log shipping primary
     if ($PSCmdlet.ShouldProcess($SqlServer, ("Configuring logshipping making settings for the primary database to secondary database on $SqlInstance"))) {
         try {
-            Write-Message -Message "Configuring logshipping making settings for the primary database." -Level Output
+            Write-Message -Message "Configuring logshipping making settings for the primary database." -Level Verbose
             Write-Message -Message "Executing query:`n$Query" -Level Verbose
             $ServerSecondary.Query($Query)
-        }
-        catch {
+        } catch {
             Write-Message -Message "$($_.Exception.InnerException.InnerException.InnerException.InnerException.Message)" -Level Warning
             Stop-Function -Message "Error executing the query.`n$($_.Exception.Message)"  -ErrorRecord $_ -Target $SqlInstance -Continue
         }
     }
 
-    Write-Message -Message "Finished configuring of secondary database to primary database $PrimaryDatabase." -Level Output
+    Write-Message -Message "Finished configuring of secondary database to primary database $PrimaryDatabase." -Level Verbose
 }

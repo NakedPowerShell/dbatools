@@ -1,163 +1,137 @@
-#ValidationTags#Messaging,FlowControl,Pipeline,CodeStyle#
 function Set-DbaTcpPort {
     <#
-        .SYNOPSIS
-            Changes the TCP port used by the specified SQL Server.
+    .SYNOPSIS
+        Changes the TCP port used by the specified SQL Server.
 
-        .DESCRIPTION
-            This function changes the TCP port used by the specified SQL Server.
+    .DESCRIPTION
+        This function changes the TCP port used by the specified SQL Server.
 
-        .PARAMETER SqlInstance
-            The SQL Server that you're connecting to.
+        Be aware that the Database Engine begins listening on a new port only when restarted. So you have to restart the Database Engine that the new settings become effective.
 
-        .PARAMETER SqlCredential
-            Credential object used to connect to the SQL Server instance as a different user
+    .PARAMETER SqlInstance
+        The target SQL Server instance or instances.
 
-        .PARAMETER Credential
-            Credential object used to connect to the Windows server itself as a different user
+    .PARAMETER SqlCredential
+        Credential object used to connect to the SQL Server instance as a different user.
 
-        .PARAMETER Port
-            TCPPort that SQLService should listen on.
+    .PARAMETER Credential
+        Credential object used to connect to the Windows server itself as a different user (like SQL Configuration Manager).
 
-        .PARAMETER IpAddress
-            Wich IpAddress should the portchange , if omitted allip (0.0.0.0) will be changed with the new portnumber.
+    .PARAMETER Port
+        TCPPort that SQLService should listen on.
 
-        .PARAMETER EnableException
-            By default, when something goes wrong we try to catch it, interpret it and give you a friendly warning message.
-            This avoids overwhelming you with "sea of red" exceptions, but is inconvenient because it basically disables advanced scripting.
-            Using this switch turns this "nice by default" feature off and enables you to catch exceptions with your own try/catch.
+    .PARAMETER IpAddress
+        Ip address to which the change should apply, if omitted AllIp (0.0.0.0) will be changed with the new port number.
 
-        .PARAMETER WhatIf
-            Shows what would happen if the command were to run. No actions are actually performed.
+    .PARAMETER EnableException
+        By default, when something goes wrong we try to catch it, interpret it and give you a friendly warning message.
+        This avoids overwhelming you with "sea of red" exceptions, but is inconvenient because it basically disables advanced scripting.
+        Using this switch turns this "nice by default" feature off and enables you to catch exceptions with your own try/catch.
 
-        .PARAMETER Confirm
-            Prompts you for confirmation before executing any changing operations within the command.
+    .PARAMETER WhatIf
+        Shows what would happen if the command were to run. No actions are actually performed.
 
-        .NOTES
-            Tags: Service, Port, TCP, Configure
-            Author: Hansson7707@gmail.com, @H0s0n77
+    .PARAMETER Confirm
+        Prompts you for confirmation before executing any changing operations within the command.
 
-            Website: https://dbatools.io
-            Copyright: (C) Chrissy LeMaire, clemaire@gmail.com
-            License: MIT https://opensource.org/licenses/MIT
+    .PARAMETER Force
+        Will restart SQL Server and SQL Server Agent service to apply the change.
 
-        .LINK
-            https://dbatools.io/Set-DbaTcpPort
+    .NOTES
+        Tags: Network, Connection, TCP, Configure
+        Author: @H0s0n77
 
-        .EXAMPLE
-            Set-DbaTcpPort -SqlInstance SqlInstance2014a -Port 1433
+        Website: https://dbatools.io
+        Copyright: (c) 2018 by dbatools, licensed under MIT
+        License: MIT https://opensource.org/licenses/MIT
 
-            Sets the port number 1433 for allips on the default instance on SqlInstance2014a
+    .LINK
+        https://dbatools.io/Set-DbaTcpPort
 
-        .EXAMPLE
-            Set-DbaTcpPort -SqlInstance winserver\sqlexpress -IpAddress 192.168.1.22 -Port 1433
+    .EXAMPLE
+        PS C:\> Set-DbaTcpPort -SqlInstance sql2017 -Port 1433
 
-            Sets the port number 1433 for IP 192.168.1.22 on the sqlexpress instance on winserver
+        Sets the port number 1433 for all IP Addresses on the default instance on sql2017. Prompts for confirmation.
 
-        .EXAMPLE
-            Set-DbaTcpPort -SqlInstance 'SQLDB2014A' ,'SQLDB2016B' -port 1337
+    .EXAMPLE
+        PS C:\> Set-DbaTcpPort -SqlInstance winserver\sqlexpress -IpAddress 192.168.1.22 -Port 1433 -Confirm:$false
 
-            Sets the port number 1337 for ALLIP's on SqlInstance SQLDB2014A and SQLDB2016B
+        Sets the port number 1433 for IP 192.168.1.22 on the sqlexpress instance on winserver. Does not prompt for confirmation.
+
+    .EXAMPLE
+        PS C:\> Set-DbaTcpPort -SqlInstance sql2017, sql2019 -port 1337 -Credential ad\dba -Force
+
+        Sets the port number 1337 for all IP Addresses on SqlInstance sql2017 and sql2019 using the credentials for ad\dba. Prompts for confirmation. Restarts the service.
+
     #>
-    [CmdletBinding(ConfirmImpact = "High")]
-    Param (
-        [parameter(Mandatory = $true, ValueFromPipeline = $true)]
-        [Alias("ServerInstance", "SqlServer")]
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = "High")]
+    param (
+        [parameter(Mandatory, ValueFromPipeline)]
         [DbaInstanceParameter[]]$SqlInstance,
-        [PSCredential]$SqlCredential,
         [PSCredential]$Credential,
-        [parameter(Mandatory = $true)]
+        [parameter(Mandatory)]
         [ValidateRange(1, 65535)]
         [int]$Port,
         [IpAddress[]]$IpAddress,
-        [Alias('Silent')]
+        [switch]$Force,
         [switch]$EnableException
     )
 
-    begin {
-
-        if ($IpAddress.Length -eq 0) {
-            $IpAddress = '0.0.0.0'
-        }
-        else {
-            if ($SqlInstance.count -gt 1) {
-                Stop-Function -Message "-IpAddress switch cannot be used with a collection of serveraddresses" -Target $SqlInstance
-                return
-            }
-        }
-    }
-
     process {
-        if (Test-FunctionInterrupt) { return }
+        if (Test-FunctionInterrupt) {
+            return
+        }
+
+        if ('0.0.0.0' -eq $IpAddress) {
+            $IpAddress = $null
+        }
+
+        if ($IpAddress -and $SqlInstance.Count -gt 1) {
+            Stop-Function -Message "-IpAddress switch cannot be used with a collection of serveraddresses" -Target $SqlInstance
+            return
+        }
 
         foreach ($instance in $SqlInstance) {
-
-            try {
-                Write-Message -Level Verbose -Message "Connecting to $instance"
-                $server = Connect-SqlInstance -SqlInstance $instance -SqlCredential $sqlcredential
-            }
-            catch {
-                Stop-Function -Message "Failure" -Category ConnectionError -ErrorRecord $_ -Target $instance -Continue
-            }
-
-            $wmiinstancename = $server.ServiceName
-
-
-            if ($server.IsClustered) {
-                Write-Message -Level Verbose -Message "Instance is clustered fetching nodes..."
-                $clusternodes = (Get-DbaClusterNode -SqlInstance $server).ComputerName -join ", "
-
-                Write-Message -Level Output -Message "$instance is a clustered instance, portchanges will be reflected on all nodes ($clusternodes) after a failover"
-            }
-
-            $scriptblock = {
-                $instance = $args[0]
-                $wmiinstancename = $args[1]
-                $port = $args[2]
-                $IpAddress = $args[3]
-                $sqlinstanceName = $args[4]
-
-                $wmi = New-Object Microsoft.SqlServer.Management.Smo.Wmi.ManagedComputer $instance
-                $wmiinstance = $wmi.ServerInstances | Where-Object { $_.Name -eq $wmiinstancename }
-                $tcp = $wmiinstance.ServerProtocols | Where-Object { $_.DisplayName -eq 'TCP/IP' }
-                $IpAddress = $tcp.IpAddresses | where-object { $_.IpAddress -eq $IpAddress }
-                $tcpport = $IpAddress.IpAddressProperties | Where-Object { $_.Name -eq 'TcpPort' }
-
-                $oldport = $tcpport.Value
+            $computerFullName = $instance.ComputerName
+            $instanceName = $instance.InstanceName
+            if (-not $IpAddress) {
+                if ($Pscmdlet.ShouldProcess($instance, "Setting port to $Port for IPAll of $instance")) {
+                    Set-DbaNetworkConfiguration -SqlInstance $instance -Credential $Credential -StaticPortForIPAll $Port -EnableException:$EnableException -Confirm:$false
+                }
+            } else {
                 try {
-                    $tcpport.value = $port
-                    $tcp.Alter()
-                    [pscustomobject]@{
-                        ComputerName  = $env:COMPUTERNAME
-                        InstanceName  = $wmiinstancename
-                        SqlInstance   = $sqlinstanceName
-                        OldPortNumber = $oldport
-                        PortNumber    = $Port
-                        Status        = "Success"
+                    $netConf = Get-DbaNetworkConfiguration -SqlInstance $instance -Credential $Credential -OutputType Full -EnableException
+                } catch {
+                    Stop-Function -Message "Failed to collect network configuration from $($instance.ComputerName) for instance $($instance.InstanceName)." -Target $instance -ErrorRecord $_ -Continue
+                }
+
+                $netConf.TcpIpEnabled = $true
+                $netConf.TcpIpProperties.Enabled = $true
+                $netConf.TcpIpProperties.ListenAll = $false
+                foreach ($ip in $IpAddress) {
+                    $ipConf = $netConf.TcpIpAddresses | Where-Object { $_.IpAddress -eq $ip }
+                    if ($ipConf) {
+                        $ipConf.Enabled = $true
+                        $ipConf.TcpDynamicPorts = ''
+                        $ipConf.TcpPort = "$Port"  # change if [int[]]: $Port -join ','
+                    } else {
+                        Write-Message -Level Warning -Message "IP address $ip not found, skipping."
                     }
                 }
-                catch {
-                    [pscustomobject]@{
-                        ComputerName  = $env:COMPUTERNAME
-                        InstanceName  = $wmiinstancename
-                        SqlInstance   = $sqlinstanceName
-                        OldPortNumber = $oldport
-                        PortNumber    = $Port
-                        Status        = "Failed: $_"
+
+                if ($Pscmdlet.ShouldProcess($instance, "Setting port to $Port for IP address $IpAddress of $instance")) {
+                    $netConf | Set-DbaNetworkConfiguration -Credential $Credential -EnableException:$EnableException -Confirm:$false
+                }
+
+                if (Test-Bound -ParameterName Force) {
+                    if ($PSCmdlet.ShouldProcess($instance, "Force provided, restarting Engine and Agent service for $instance on $computerFullName")) {
+                        try {
+                            $null = Restart-DbaService -SqlInstance $instance -Type Engine -Force -EnableException
+                        } catch {
+                            Stop-Function -Message "Issue restarting $instance on $computerFullName" -Target $instance -Continue -ErrorRecord $_
+                        }
                     }
                 }
-            }
-
-            try {
-                $computerName = $instance.ComputerName
-                $resolved = Resolve-DbaNetworkName -ComputerName $computerName
-
-                Write-Message -Level Verbose -Message "Writing TCPPort $port for $instance to $($resolved.FQDN)..."
-                Invoke-ManagedComputerCommand -ComputerName $resolved.FQDN -ScriptBlock $scriptblock -ArgumentList $Server.NetName, $wmiinstancename, $port, $IpAddress, $server.DomainInstanceName -Credential $Credential
-
-            }
-            catch {
-                Invoke-ManagedComputerCommand -ComputerName $instance.ComputerName -ScriptBlock $scriptblock -ArgumentList $Server.NetName, $wmiinstancename, $port, $IpAddress, $server.DomainInstanceName -Credential $Credential
             }
         }
     }

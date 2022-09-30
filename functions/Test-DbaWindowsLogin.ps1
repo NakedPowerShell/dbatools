@@ -1,70 +1,68 @@
-#ValidationTags#Messaging,FlowControl,Pipeline,CodeStyle#
 function Test-DbaWindowsLogin {
     <#
-        .SYNOPSIS
-            Test-DbaWindowsLogin finds any logins on SQL instance that are AD logins with either disabled AD user accounts or ones that no longer exist
+    .SYNOPSIS
+        Test-DbaWindowsLogin finds any logins on SQL instance that are AD logins with either disabled AD user accounts or ones that no longer exist
 
-        .DESCRIPTION
-            The purpose of this function is to find SQL Server logins that are used by active directory users that are either disabled or removed from the domain. It allows you to keep your logins accurate and up to date by removing accounts that are no longer needed.
+    .DESCRIPTION
+        The purpose of this function is to find SQL Server logins that are used by active directory users that are either disabled or removed from the domain. It allows you to keep your logins accurate and up to date by removing accounts that are no longer needed.
 
-        .PARAMETER SqlInstance
-            The SQL Server instance you're checking logins on. You must have sysadmin access and server version must be SQL Server version 2000 or higher.
+    .PARAMETER SqlInstance
+        The SQL Server instance you're checking logins on. You must have sysadmin access and server version must be SQL Server version 2000 or higher.
 
-        .PARAMETER SqlCredential
-            Login to the target instance using alternative credentials. Windows and SQL Authentication supported. Accepts credential objects (Get-Credential)
+    .PARAMETER SqlCredential
+        Login to the target instance using alternative credentials. Accepts PowerShell credentials (Get-Credential).
 
-        .PARAMETER Login
-            Specifies a list of logins to include in the results. Options for this list are auto-populated from the server.
+        Windows Authentication, SQL Server Authentication, Active Directory - Password, and Active Directory - Integrated are all supported.
 
-        .PARAMETER ExcludeLogin
-            Specifies a list of logins to exclude from the results. Options for this list are auto-populated from the server.
+        For MFA support, please use Connect-DbaInstance.
 
-        .PARAMETER FilterBy
-            Specifies the object types to return. By default, both Logins and Groups are returned. Valid options for this parameter are 'GroupsOnly' and 'LoginsOnly'.
+    .PARAMETER Login
+        Specifies a list of logins to include in the results. Options for this list are auto-populated from the server.
 
-        .PARAMETER IgnoreDomains
-            Specifies a list of Active Directory domains to ignore. By default, all domains in the forest as well as all trusted domains are traversed.
+    .PARAMETER ExcludeLogin
+        Specifies a list of logins to exclude from the results. Options for this list are auto-populated from the server.
 
-        .PARAMETER Detailed
-            Output all properties, will be depreciated in 1.0.0 release.
+    .PARAMETER FilterBy
+        Specifies the object types to return. By default, both Logins and Groups are returned. Valid options for this parameter are 'GroupsOnly' and 'LoginsOnly'.
 
-        .PARAMETER EnableException
-            By default, when something goes wrong we try to catch it, interpret it and give you a friendly warning message.
-            This avoids overwhelming you with "sea of red" exceptions, but is inconvenient because it basically disables advanced scripting.
-            Using this switch turns this "nice by default" feature off and enables you to catch exceptions with your own try/catch.
+    .PARAMETER IgnoreDomains
+        Specifies a list of Active Directory domains to ignore. By default, all domains in the forest as well as all trusted domains are traversed.
 
-        .NOTES
-            Tags: Login, Security
-            Author: Stephen Bennett: https://sqlnotesfromtheunderground.wordpress.com/
-            Author: Chrissy LeMaire (@cl), netnerds.net
+    .PARAMETER EnableException
+        By default, when something goes wrong we try to catch it, interpret it and give you a friendly warning message.
+        This avoids overwhelming you with "sea of red" exceptions, but is inconvenient because it basically disables advanced scripting.
+        Using this switch turns this "nice by default" feature off and enables you to catch exceptions with your own try/catch.
 
-            Website: https://dbatools.io
-            Copyright: (C) Chrissy LeMaire, clemaire@gmail.com
-            License: MIT https://opensource.org/licenses/MIT
+    .NOTES
+        Tags: Login
+        Author: Stephen Bennett, sqlnotesfromtheunderground.wordpress.com | Chrissy LeMaire (@cl)
 
-        .LINK
-            https://dbatools.io/Test-DbaWindowsLogin
+        Website: https://dbatools.io
+        Copyright: (c) 2018 by dbatools, licensed under MIT
+        License: MIT https://opensource.org/licenses/MIT
 
-        .EXAMPLE
-            Test-DbaWindowsLogin -SqlInstance Dev01
+    .LINK
+        https://dbatools.io/Test-DbaWindowsLogin
 
-            Tests all logins in the current Active Directory domain that are either disabled or do not exist on the SQL Server instance Dev01
+    .EXAMPLE
+        PS C:\> Test-DbaWindowsLogin -SqlInstance Dev01
 
-        .EXAMPLE
-            Test-DbaWindowsLogin -SqlInstance Dev01 -FilterBy GroupsOnly | Select-Object -Property *
+        Tests all logins in the current Active Directory domain that are either disabled or do not exist on the SQL Server instance Dev01
 
-            Tests all Active Directory groups that have logins on Dev01, and shows all information for those logins
+    .EXAMPLE
+        PS C:\> Test-DbaWindowsLogin -SqlInstance Dev01 -FilterBy GroupsOnly | Select-Object -Property *
 
-        .EXAMPLE
-            Test-DbaWindowsLogin -SqlInstance Dev01 -IgnoreDomains testdomain
+        Tests all Active Directory groups that have logins on Dev01, and shows all information for those logins
 
-            Tests all Domain logins excluding any that are from the testdomain
+    .EXAMPLE
+        PS C:\> Test-DbaWindowsLogin -SqlInstance Dev01 -IgnoreDomains testdomain
+
+        Tests all Domain logins excluding any that are from the testdomain
 
     #>
     [CmdletBinding()]
-    Param (
-        [parameter(Position = 0, Mandatory = $true, ValueFromPipeline = $true)]
-        [Alias("ServerInstance", "SqlServer", "SqlServers")]
+    param (
+        [parameter(Mandatory, ValueFromPipeline)]
         [DbaInstanceParameter[]]$SqlInstance,
         [PSCredential]$SqlCredential,
         [object[]]$Login,
@@ -72,14 +70,10 @@ function Test-DbaWindowsLogin {
         [ValidateSet("LoginsOnly", "GroupsOnly", "None")]
         [string]$FilterBy = "None",
         [string[]]$IgnoreDomains,
-        [switch]$Detailed,
-        [Alias('Silent')]
         [switch]$EnableException
     )
 
     begin {
-        Test-DbaDeprecation -DeprecatedOn 1.0.0 -Parameter Detailed
-
         if ($IgnoreDomains) {
             $IgnoreDomainsNormalized = $IgnoreDomains.ToUpper()
             Write-Message -Message ("Excluding logins for domains " + ($IgnoreDomains -join ',')) -Level Verbose
@@ -114,10 +108,8 @@ function Test-DbaWindowsLogin {
     process {
         foreach ($instance in $SqlInstance) {
             try {
-                $server = Connect-SqlInstance -SqlInstance $instance -SqlCredential $sqlcredential
-                Write-Message -Message "Connected to: $instance." -Level Verbose
-            }
-            catch {
+                $server = Connect-DbaInstance -SqlInstance $instance -SqlCredential $SqlCredential
+            } catch {
                 Stop-Function -Message "Failure" -Category ConnectionError -ErrorRecord $_ -Target $instance -Continue
             }
 
@@ -126,7 +118,7 @@ function Test-DbaWindowsLogin {
             $allWindowsLoginsGroups = $server.Logins | Where-Object { $_.LoginType -in ('WindowsUser', 'WindowsGroup') }
 
             # we cannot validate local users
-            $allWindowsLoginsGroups = $allWindowsLoginsGroups | Where-Object { $_.Name.StartsWith("NT ") -eq $false -and $_.Name.StartsWith($server.NetName) -eq $false -and $_.Name.StartsWith("BUILTIN") -eq $false }
+            $allWindowsLoginsGroups = $allWindowsLoginsGroups | Where-Object { $_.Name.StartsWith("NT ") -eq $false -and $_.Name.StartsWith($server.ComputerName) -eq $false -and $_.Name.StartsWith("BUILTIN") -eq $false }
             if ($Login) {
                 $allWindowsLoginsGroups = $allWindowsLoginsGroups | Where-Object Name -In $Login
             }
@@ -159,7 +151,18 @@ function Test-DbaWindowsLogin {
                 Write-Message -Message "Parsing Login $adLogin." -Level Verbose
                 $exists = $false
                 try {
-                    $u = Get-DbaADObject -ADObject $adLogin -Type User -EnableException
+                    $loginBinary = [byte[]]$login.Sid
+                    $SID = New-Object Security.Principal.SecurityIdentifier($loginBinary, 0)
+                    $SIDForAD = $SID.Value
+                    Write-Message -Message "SID for AD is $SIDForAD" -Level Debug
+                    $u = Get-DbaADObject -ADObject "$domain\$SIDForAD" -Type User -IdentityType Sid -EnableException
+                    if ($null -eq $u -and $adLogin -like '*$') {
+                        Write-Message -Message "Parsing Login as computer" -Level Verbose
+                        $u = Get-DbaADObject -ADObject $adLogin -Type Computer -EnableException
+                        $adType = 'Computer'
+                    } else {
+                        $adType = 'User'
+                    }
                     $foundUser = $u.GetUnderlyingObject()
                     $foundSid = $foundUser.ObjectSid.Value -join ''
                     if ($foundUser) {
@@ -170,8 +173,11 @@ function Test-DbaWindowsLogin {
                         Write-Message -Message "SID mismatch detected for $adLogin (MSSQL: $loginSid, AD: $foundSid)." -Level Debug
                         $exists = $false
                     }
-                }
-                catch {
+                    if ($u.SamAccountName -ne $username) {
+                        Write-Message -Message "SamAccountName mismatch detected for $adLogin." -Level Warning
+                        Write-Message -Message "SamAccountName mismatch detected for $adLogin (MSSQL: $username, AD: $($u.SamAccountName))." -Level Debug
+                    }
+                } catch {
                     Write-Message -Message "AD Searcher Error for $username." -Level Warning
                 }
 
@@ -208,7 +214,7 @@ function Test-DbaWindowsLogin {
                     Server                            = $server.DomainInstanceName
                     Domain                            = $domain
                     Login                             = $username
-                    Type                              = "User"
+                    Type                              = $adType
                     Found                             = $exists
                     DisabledInSQLServer               = $login.IsDisabled
                     AccountNotDelegated               = $additionalProps.AccountNotDelegated
@@ -239,7 +245,11 @@ function Test-DbaWindowsLogin {
                 Write-Message -Message "Parsing Login $adLogin on $server." -Level Verbose
                 $exists = $false
                 try {
-                    $u = Get-DbaADObject -ADObject $adLogin -Type Group -EnableException
+                    $loginBinary = [byte[]]$login.Sid
+                    $SID = New-Object Security.Principal.SecurityIdentifier($loginBinary, 0)
+                    $SIDForAD = $SID.Value
+                    Write-Message -Message "SID for AD is $SIDForAD" -Level Debug
+                    $u = Get-DbaADObject -ADObject "$domain\$SIDForAD" -Type Group -IdentityType Sid -EnableException
                     $foundUser = $u.GetUnderlyingObject()
                     $foundSid = $foundUser.objectSid.Value -join ''
                     if ($foundUser) {
@@ -250,8 +260,11 @@ function Test-DbaWindowsLogin {
                         Write-Message -Message "SID mismatch detected for $adLogin (MSSQL: $loginSid, AD: $foundSid)." -Level Debug
                         $exists = $false
                     }
-                }
-                catch {
+                    if ($u.SamAccountName -ne $groupName) {
+                        Write-Message -Message "SamAccountName mismatch detected for $adLogin." -Level Warning
+                        Write-Message -Message "SamAccountName mismatch detected for $adLogin (MSSQL: $groupName, AD: $($u.SamAccountName))." -Level Debug
+                    }
+                } catch {
                     Write-Message -Message "AD Searcher Error for $groupName on $server" -Level Warning
                 }
                 $rtn = [PSCustomObject]@{
@@ -278,8 +291,5 @@ function Test-DbaWindowsLogin {
 
             }
         }
-    }
-    end {
-        Test-DbaDeprecation -DeprecatedOn "1.0.0" -EnableException:$false -Alias Test-DbaValidLogin
     }
 }

@@ -1,4 +1,3 @@
-#ValidationTags#Messaging,FlowControl,Pipeline,CodeStyle#
 function Restore-DbaDbSnapshot {
     <#
     .SYNOPSIS
@@ -10,10 +9,14 @@ function Restore-DbaDbSnapshot {
         It also fixes some long-standing bugs in SQL Server when restoring from snapshots
 
     .PARAMETER SqlInstance
-        The SQL Server that you're connecting to
+        The target SQL Server instance or instances
 
     .PARAMETER SqlCredential
-        Credential object used to connect to the SQL Server as a different user
+        Login to the target instance using alternative credentials. Accepts PowerShell credentials (Get-Credential).
+
+        Windows Authentication, SQL Server Authentication, Active Directory - Password, and Active Directory - Integrated are all supported.
+
+        For MFA support, please use Connect-DbaInstance.
 
     .PARAMETER Database
         Restores from the last snapshot databases with this names only. You can pass either Databases or Snapshots
@@ -28,7 +31,7 @@ function Restore-DbaDbSnapshot {
         Allows piping from other Snapshot commands
 
     .PARAMETER Force
-        If restoring from a snapshot involves dropping any other shapshot, you need to explicitly
+        If restoring from a snapshot involves dropping any other snapshot, you need to explicitly
         use -Force to let this command delete the ones not involved in the restore process.
         Also, -Force will forcibly kill all running queries that prevent the restore process.
 
@@ -45,57 +48,56 @@ function Restore-DbaDbSnapshot {
 
     .NOTES
         Tags: Snapshot, Backup, Restore, Database
-        Author: niphlod
+        Author: Simone Bizzotto (@niphold)
 
         Website: https://dbatools.io
-        Copyright: (C) Chrissy LeMaire, clemaire@gmail.com
+        Copyright: (c) 2018 by dbatools, licensed under MIT
         License: MIT https://opensource.org/licenses/MIT
 
     .LINK
         https://dbatools.io/Restore-DbaDbSnapshot
 
     .EXAMPLE
-        Restore-DbaDbSnapshot -SqlInstance sql2014 -Database HR, Accounting
+        PS C:\> Restore-DbaDbSnapshot -SqlInstance sql2014 -Database HR, Accounting
 
         Restores HR and Accounting databases using the latest snapshot available
 
     .EXAMPLE
-        Restore-DbaDbSnapshot -SqlInstance sql2014 -Database HR -Force
+        PS C:\> Restore-DbaDbSnapshot -SqlInstance sql2014 -Database HR -Force
 
         Restores HR database from latest snapshot and kills any active connections in the database on sql2014.
 
     .EXAMPLE
-        Get-DbaDbSnapshot -SqlInstance sql2016 -Database HR | Restore-DbaDbSnapshot -Force
+        PS C:\> Get-DbaDbSnapshot -SqlInstance sql2016 -Database HR | Restore-DbaDbSnapshot -Force
 
         Restores HR database from latest snapshot and kills any active connections in the database on sql2016.
 
     .EXAMPLE
-        Get-DbaDbSnapshot -SqlInstance sql2016 | Out-GridView -Passthru | Restore-DbaDbSnapshot
+        PS C:\> Get-DbaDbSnapshot -SqlInstance sql2016 | Out-GridView -PassThru | Restore-DbaDbSnapshot
 
         Allows the selection of snapshots on sql2016 to restore
 
     .EXAMPLE
-        Restore-DbaDbSnapshot -SqlInstance sql2014 -Snapshot HR_snap_20161201, Accounting_snap_20161101
+        PS C:\> Restore-DbaDbSnapshot -SqlInstance sql2014 -Snapshot HR_snap_20161201, Accounting_snap_20161101
 
         Restores databases from snapshots named HR_snap_20161201 and Accounting_snap_20161101
+
     #>
-    [CmdletBinding(SupportsShouldProcess)]
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = "Medium")]
     param (
-        [Alias("ServerInstance", "SqlServer")]
         [DbaInstance[]]$SqlInstance,
-        [Alias("Credential")]
         [PSCredential]$SqlCredential,
-        [Alias("Databases")]
         [object[]]$Database,
         [object[]]$ExcludeDatabase,
         [object[]]$Snapshot,
         [Parameter(ValueFromPipeline)]
         [Microsoft.SqlServer.Management.Smo.Database[]]$InputObject,
         [switch]$Force,
-        [Alias('Silent')]
         [switch]$EnableException
     )
-
+    begin {
+        if ($Force) { $ConfirmPreference = 'none' }
+    }
     process {
         if (-not $Snapshot -and -not $Database -and -not $ExcludeDatabase -and -not $InputObject) {
             Stop-Function -Message "You must specify either -Snapshot (to restore from) or -Database/-ExcludeDatabase (to restore to) or pipe in a snapshot"
@@ -103,11 +105,9 @@ function Restore-DbaDbSnapshot {
         }
 
         foreach ($instance in $SqlInstance) {
-            Write-Message -Level Verbose -Message "Connecting to $instance"
             try {
-                $server = Connect-SqlInstance -SqlInstance $instance -SqlCredential $SqlCredential
-            }
-            catch {
+                $server = Connect-DbaInstance -SqlInstance $instance -SqlCredential $SqlCredential
+            } catch {
                 Stop-Function -Message "Failure" -Category ConnectionError -ErrorRecord $_ -Target $instance -Continue
             }
 
@@ -153,8 +153,7 @@ function Restore-DbaDbSnapshot {
                 if ($Pscmdlet.ShouldProcess($server, "Remove other db snapshots for $db")) {
                     try {
                         $null = $othersnaps | Remove-DbaDatabase -Confirm:$false -EnableException
-                    }
-                    catch {
+                    } catch {
                         Stop-Function -Message "Failed to remove other snapshots for $db on $server" -ErrorRecord $_ -Continue
                     }
                 }
@@ -167,8 +166,7 @@ function Restore-DbaDbSnapshot {
                         }
 
                         $null = $server.Query("USE master; RESTORE DATABASE [$($db.Name)] FROM DATABASE_SNAPSHOT='$($snap.Name)'")
-                    }
-                    catch {
+                    } catch {
                         Stop-Function -Message "Failiure attempting to restore $db on $server" -ErrorRecord $_ -Continue
                     }
                 }
@@ -197,8 +195,5 @@ function Restore-DbaDbSnapshot {
                 Get-DbaDatabase -SqlInstance $server -Database $db.Name
             }
         }
-    }
-    end {
-        Test-DbaDeprecation -DeprecatedOn "1.0.0" -Alias Restore-DbaFromDatabaseSnapshot
     }
 }

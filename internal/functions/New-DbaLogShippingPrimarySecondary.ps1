@@ -40,7 +40,7 @@ function New-DbaLogShippingPrimarySecondary {
         .NOTES
             Author: Sander Stad (@sqlstad, sqlstad.nl)
             Website: https://dbatools.io
-            Copyright: (C) Chrissy LeMaire, clemaire@gmail.com
+            Copyright: (c) 2018 by dbatools, licensed under MIT
             License: MIT https://opensource.org/licenses/MIT
 
         .LINK
@@ -49,51 +49,47 @@ function New-DbaLogShippingPrimarySecondary {
         .EXAMPLE
             New-DbaLogShippingPrimarySecondary -SqlInstance sql1 -PrimaryDatabase DB1 -SecondaryServer sql2 -SecondaryDatabase DB1_DR
     #>
-    [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = "Low")]
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = "Low")]
     param (
-        [parameter(Mandatory = $true)]
-        [Alias("ServerInstance", "SqlServer")]
+        [parameter(Mandatory)]
         [DbaInstanceParameter]$SqlInstance,
         [PSCredential]$SqlCredential,
-        [Parameter(Mandatory = $true)]
+        [Parameter(Mandatory)]
         [ValidateNotNullOrEmpty()]
         [object]$PrimaryDatabase,
-        [Parameter(Mandatory = $true)]
+        [Parameter(Mandatory)]
         [ValidateNotNullOrEmpty()]
         [object]$SecondaryDatabase,
-        [Parameter(Mandatory = $true)]
+        [Parameter(Mandatory)]
         [ValidateNotNullOrEmpty()]
         [DBAInstanceParameter]$SecondaryServer,
         [PSCredential]$SecondarySqlCredential,
-        [Alias('Silent')]
         [switch]$EnableException
     )
 
     # Try connecting to the instance
-    Write-Message -Message "Connecting to $SqlInstance" -Level Verbose
     try {
-        $ServerPrimary = Connect-SqlInstance -SqlInstance $SqlInstance -SqlCredential $SqlCredential
-    }
-    catch {
-        Stop-Function -Message "Could not connect to Sql Server instance" -Target $SqlInstance -Continue
+        $serverPrimary = Connect-DbaInstance -SqlInstance $SqlInstance -SqlCredential $SqlCredential
+    } catch {
+        Stop-Function -Message "Failure" -Category ConnectionError -ErrorRecord $_ -Target $SqlInstance
+        return
     }
 
     # Try connecting to the instance
-    Write-Message -Message "Connecting to $SecondaryServer" -Level Verbose
     try {
-        $ServerSecondary = Connect-SqlInstance -SqlInstance $SecondaryServer -SqlCredential $SecondarySqlCredential
-    }
-    catch {
-        Stop-Function -Message "Could not connect to Sql Server instance" -Target $SecondaryServer -Continue
+        $serverSecondary = Connect-DbaInstance -SqlInstance $SecondaryServer -SqlCredential $SecondarySqlCredential
+    } catch {
+        Stop-Function -Message "Failure" -Category ConnectionError -ErrorRecord $_ -Target $SecondaryServer
+        return
     }
 
     # Check if the database is present on the source sql server
-    if ($ServerPrimary.Databases.Name -notcontains $PrimaryDatabase) {
+    if ($serverPrimary.Databases.Name -notcontains $PrimaryDatabase) {
         Stop-Function -Message "Database $PrimaryDatabase is not available on instance $SqlInstance" -ErrorRecord $_ -Target $SqlInstance -Continue
     }
 
     # Check if the database is present on the destination sql server
-    if ($ServerSecondary.Databases.Name -notcontains $SecondaryDatabase) {
+    if ($serverSecondary.Databases.Name -notcontains $SecondaryDatabase) {
         Stop-Function -Message "Database $SecondaryDatabase is not available on instance $SecondaryServer" -ErrorRecord $_ -Target $SecondaryServer -Continue
     }
 
@@ -101,12 +97,11 @@ function New-DbaLogShippingPrimarySecondary {
 
     try {
         Write-Message -Message "Executing query:`n$Query" -Level Verbose
-        $Result = $ServerPrimary.Query($Query)
+        $Result = $serverPrimary.Query($Query)
         if ($Result.Count -eq 0 -or $Result[0] -ne $PrimaryDatabase) {
             Stop-Function -Message "Database $PrimaryDatabase does not exist as log shipping primary.`nPlease run New-DbaLogShippingPrimaryDatabase first."  -ErrorRecord $_ -Target $SqlInstance -Continue
         }
-    }
-    catch {
+    } catch {
         Stop-Function -Message "Error executing the query.`n$($_.Exception.Message)`n$Query" -ErrorRecord $_ -Target $SqlInstance -Continue
     }
 
@@ -116,26 +111,24 @@ function New-DbaLogShippingPrimarySecondary {
         ,@secondary_server = N'$SecondaryServer'
         ,@secondary_database = N'$SecondaryDatabase' "
 
-    if ($ServerPrimary.Version.Major -gt 9) {
+    if ($serverPrimary.Version.Major -gt 9) {
         $Query += ",@overwrite = 1;"
-    }
-    else {
+    } else {
         $Query += ";"
     }
 
     # Execute the query to add the log shipping primary
     if ($PSCmdlet.ShouldProcess($SqlInstance, ("Configuring logshipping connecting the primary database $PrimaryDatabase to secondary database $SecondaryDatabase on $SqlInstance"))) {
         try {
-            Write-Message -Message "Configuring logshipping connecting the primary database $PrimaryDatabase to secondary database $SecondaryDatabase on $SqlInstance." -Level Output
+            Write-Message -Message "Configuring logshipping connecting the primary database $PrimaryDatabase to secondary database $SecondaryDatabase on $SqlInstance." -Level Verbose
             Write-Message -Message "Executing query:`n$Query" -Level Verbose
-            $ServerPrimary.Query($Query)
-        }
-        catch {
+            $serverPrimary.Query($Query)
+        } catch {
             Write-Message -Message "$($_.Exception.InnerException.InnerException.InnerException.InnerException.Message)" -Level Warning
             Stop-Function -Message "Error executing the query.`n$($_.Exception.Message)`n$Query" -ErrorRecord $_ -Target $SqlInstance -Continue
         }
     }
 
-    Write-Message -Message "Finished configuring of primary database $PrimaryDatabase to secondary database $SecondaryDatabase." -Level Output
+    Write-Message -Message "Finished configuring of primary database $PrimaryDatabase to secondary database $SecondaryDatabase." -Level Verbose
 
 }

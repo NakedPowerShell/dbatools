@@ -1,86 +1,91 @@
 function Get-DbaEstimatedCompletionTime {
     <#
-.SYNOPSIS
-Gets execution and estimated completion time information for queries
+    .SYNOPSIS
+        Gets execution and estimated completion time information for queries
 
-.DESCRIPTION
-Gets execution and estimated completion time information for queries
+    .DESCRIPTION
+        Gets execution and estimated completion time information for queries
 
-Percent complete will show for the following commands
+        Percent complete will show for the following commands
 
-ALTER INDEX REORGANIZE
-AUTO_SHRINK option with ALTER DATABASE
-BACKUP DATABASE
-DBCC CHECKDB
-DBCC CHECKFILEGROUP
-DBCC CHECKTABLE
-DBCC INDEXDEFRAG
-DBCC SHRINKDATABASE
-DBCC SHRINKFILE
-RECOVERY
-RESTORE DATABASE
-ROLLBACK
-TDE ENCRYPTION
+        ALTER INDEX REORGANIZE
+        AUTO_SHRINK option with ALTER DATABASE
+        BACKUP DATABASE
+        DBCC CHECKDB
+        DBCC CHECKFILEGROUP
+        DBCC CHECKTABLE
+        DBCC INDEXDEFRAG
+        DBCC SHRINKDATABASE
+        DBCC SHRINKFILE
+        RECOVERY
+        RESTORE DATABASE
+        ROLLBACK
+        TDE ENCRYPTION
 
-For additional information, check out https://blogs.sentryone.com/loriedwards/patience-dm-exec-requests/ and https://docs.microsoft.com/en-us/sql/relational-databases/system-dynamic-management-views/sys-dm-exec-requests-transact-sql
+        For additional information, check out https://blogs.sentryone.com/loriedwards/patience-dm-exec-requests/ and https://docs.microsoft.com/en-us/sql/relational-databases/system-dynamic-management-views/sys-dm-exec-requests-transact-sql
 
-.PARAMETER SqlInstance
-The SQL Server that you're connecting to.
+        The command will only return queries that provide estimated completion time, all other running queries will be filtered out.
 
-.PARAMETER SqlCredential
-SqlCredential object used to connect to the SQL Server as a different user.
+    .PARAMETER SqlInstance
+        The target SQL Server instance or instances.
 
-.PARAMETER Database
-The database(s) to process - this list is auto-populated from the server. If unspecified, all databases will be processed.
+    .PARAMETER SqlCredential
+        SqlLogin to the target instance using alternative credentials. Accepts PowerShell credentials (Get-Credential).
 
-.PARAMETER ExcludeDatabase
-The database(s) to exclude - this list is auto-populated from the server
+        Windows Authentication, SQL Server Authentication, Active Directory - Password, and Active Directory - Integrated are all supported.
 
-.PARAMETER EnableException
+        For MFA support, please use Connect-DbaInstance..
+
+    .PARAMETER Database
+        The database(s) to process - this list is auto-populated from the server. If unspecified, all databases will be processed.
+
+    .PARAMETER ExcludeDatabase
+        The database(s) to exclude - this list is auto-populated from the server
+
+    .PARAMETER EnableException
         By default, when something goes wrong we try to catch it, interpret it and give you a friendly warning message.
         This avoids overwhelming you with "sea of red" exceptions, but is inconvenient because it basically disables advanced scripting.
         Using this switch turns this "nice by default" feature off and enables you to catch exceptions with your own try/catch.
 
-.NOTES
-Tags: Database
-Website: https://dbatools.io
-Copyright: (C) Chrissy LeMaire, clemaire@gmail.com
-License: MIT https://opensource.org/licenses/MIT
+    .NOTES
+        Tags: Diagnostic, Query
+        Author: Chrissy LeMaire (@cl), netnerds.net
 
-.LINK
-https://dbatools.io/Get-DbaEstimatedCompletionTime
+        Website: https://dbatools.io
+        Copyright: (c) 2018 by dbatools, licensed under MIT
+        License: MIT https://opensource.org/licenses/MIT
 
-.EXAMPLE
-Get-DbaEstimatedCompletionTime -SqlInstance sql2016
+    .LINK
+        https://dbatools.io/Get-DbaEstimatedCompletionTime
 
-Gets estimated completion times for queries performed against the entire server
+    .EXAMPLE
+        PS C:\> Get-DbaEstimatedCompletionTime -SqlInstance sql2016
 
-.EXAMPLE
-Get-DbaEstimatedCompletionTime -SqlInstance sql2016 | Select *
+        Gets estimated completion times for queries performed against the entire server
 
-Gets estimated completion times for queries performed against the entire server PLUS the SQL query text of each command
+    .EXAMPLE
+        PS C:\> Get-DbaEstimatedCompletionTime -SqlInstance sql2016 | Select-Object *
 
-.EXAMPLE
-Get-DbaEstimatedCompletionTime -SqlInstance sql2016 | Where-Object { $_.Text -match 'somequerytext' }
+        Gets estimated completion times for queries performed against the entire server PLUS the SQL query text of each command
 
-Gets results for commands whose queries only match specific text (match is like LIKE but way more powerful)
+    .EXAMPLE
+        PS C:\> Get-DbaEstimatedCompletionTime -SqlInstance sql2016 | Where-Object { $_.Text -match 'somequerytext' }
 
-.EXAMPLE
-Get-DbaEstimatedCompletionTime -SqlInstance sql2016 -Database Northwind,pubs,Adventureworks2014
+        Gets results for commands whose queries only match specific text (match is like LIKE but way more powerful)
 
-Gets estimated completion times for queries performed against the Northwind, pubs, and Adventureworks2014 databases
+    .EXAMPLE
+        PS C:\> Get-DbaEstimatedCompletionTime -SqlInstance sql2016 -Database Northwind,pubs,Adventureworks2014
 
-#>
+        Gets estimated completion times for queries performed against the Northwind, pubs, and Adventureworks2014 databases
+
+    #>
     [CmdletBinding()]
-    Param (
-        [parameter(Mandatory = $true, ValueFromPipeline = $true)]
-        [Alias("ServerInstance", "SqlServer")]
+    param (
+        [parameter(Mandatory, ValueFromPipeline)]
         [DbaInstanceParameter[]]$SqlInstance,
         [PSCredential]$SqlCredential,
-        [Alias("Databases")]
         [object[]]$Database,
         [object[]]$ExcludeDatabase,
-        [Alias('Silent')]
         [switch]$EnableException
     )
 
@@ -110,34 +115,32 @@ Gets estimated completion times for queries performed against the Northwind, pub
                 dateadd(second,estimated_completion_time/1000, getdate()) as EstimatedCompletionTime,
                 s.Text
              FROM sys.dm_exec_requests r
-            CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) s"
+            CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) s
+            WHERE r.estimated_completion_time > 0"
     }
 
     process {
         foreach ($instance in $SqlInstance) {
-            Write-Message -Level Verbose -Message "Connecting to $instance"
             try {
-                $server = Connect-SqlInstance -SqlInstance $instance -SqlCredential $SqlCredential
-
-            }
-            catch {
+                $server = Connect-DbaInstance -SqlInstance $instance -SqlCredential $SqlCredential
+            } catch {
                 Stop-Function -Message "Failure" -Category ConnectionError -ErrorRecord $_ -Target $instance -Continue
             }
 
             if ($Database) {
                 $includedatabases = $Database -join "','"
-                $sql = "$sql WHERE DB_NAME(r.database_id) in ('$includedatabases')"
+                $sql = "$sql AND DB_NAME(r.database_id) in ('$includedatabases')"
             }
 
             if ($ExcludeDatabase) {
                 $excludedatabases = $ExcludeDatabase -join "','"
-                $sql = "$sql WHERE DB_NAME(r.database_id) not in ('$excludedatabases')"
+                $sql = "$sql AND DB_NAME(r.database_id) not in ('$excludedatabases')"
             }
 
             Write-Message -Level Debug -Message $sql
             foreach ($row in ($server.Query($sql))) {
                 [pscustomobject]@{
-                    ComputerName            = $server.NetName
+                    ComputerName            = $server.ComputerName
                     InstanceName            = $server.ServiceName
                     SqlInstance             = $server.DomainInstanceName
                     Database                = $row.Database
@@ -154,4 +157,3 @@ Gets estimated completion times for queries performed against the Northwind, pub
         }
     }
 }
-

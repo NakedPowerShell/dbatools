@@ -1,67 +1,72 @@
 function Get-DbaXESessionTarget {
     <#
-        .SYNOPSIS
-            Get a list of Extended Events Session Targets from the specified SQL Server instance(s).
+    .SYNOPSIS
+        Get a list of Extended Events Session Targets from the specified SQL Server instance(s).
 
-        .DESCRIPTION
-            Retrieves a list of Extended Events Session Targets from the specified SQL Server instance(s).
+    .DESCRIPTION
+        Retrieves a list of Extended Events Session Targets from the specified SQL Server instance(s).
 
-        .PARAMETER SqlInstance
-            Target SQL Server. You must have sysadmin access and server version must be SQL Server version 2008 or higher.
+    .PARAMETER SqlInstance
+        The target SQL Server instance or instances. You must have sysadmin access and server version must be SQL Server version 2008 or higher.
 
-        .PARAMETER SqlCredential
-            Login to the target instance using alternative credentials. Windows and SQL Authentication supported. Accepts credential objects (Get-Credential)
+    .PARAMETER SqlCredential
+        Login to the target instance using alternative credentials. Accepts PowerShell credentials (Get-Credential).
 
-        .PARAMETER Session
-            Only return a specific session. Options for this parameter are auto-populated from the server.
+        Windows Authentication, SQL Server Authentication, Active Directory - Password, and Active Directory - Integrated are all supported.
 
-        .PARAMETER Target
-            Only return a specific target.
+        For MFA support, please use Connect-DbaInstance.
 
-        .PARAMETER InputObject
-            Specifies an XE session returned by Get-DbaXESession to search.
+    .PARAMETER Session
+        Only return a specific session. Options for this parameter are auto-populated from the server.
 
-        .PARAMETER EnableException
-            By default, when something goes wrong we try to catch it, interpret it and give you a friendly warning message.
-            This avoids overwhelming you with "sea of red" exceptions, but is inconvenient because it basically disables advanced scripting.
-            Using this switch turns this "nice by default" feature off and enables you to catch exceptions with your own try/catch.
+    .PARAMETER Target
+        Only return a specific target.
 
-        .NOTES
-            Tags: ExtendedEvent, XE, XEvent
-            Website: https://dbatools.io
-            Copyright: (C) Chrissy LeMaire, clemaire@gmail.com
-            License: MIT https://opensource.org/licenses/MIT
+    .PARAMETER InputObject
+        Specifies an XE session returned by Get-DbaXESession to search.
 
-        .LINK
-            https://dbatools.io/Get-DbaXESessionTarget
+    .PARAMETER EnableException
+        By default, when something goes wrong we try to catch it, interpret it and give you a friendly warning message.
+        This avoids overwhelming you with "sea of red" exceptions, but is inconvenient because it basically disables advanced scripting.
+        Using this switch turns this "nice by default" feature off and enables you to catch exceptions with your own try/catch.
 
-        .EXAMPLE
-            Get-DbaXESessionTarget -SqlInstance ServerA\sql987 -Session system_health
+    .NOTES
+        Tags: ExtendedEvent, XE, XEvent
+        Author: Chrissy LeMaire (@cl), netnerds.net
 
-            Shows targets for the system_health session on ServerA\sql987.
+        Website: https://dbatools.io
+        Copyright: (c) 2018 by dbatools, licensed under MIT
+        License: MIT https://opensource.org/licenses/MIT
 
-        .EXAMPLE
-            Get-DbaXESession -SqlInstance sql2016 -Session system_health | Get-DbaXESessionTarget
+    .LINK
+        https://dbatools.io/Get-DbaXESessionTarget
 
-            Returns the targets for the system_health session on sql2016.
+    .EXAMPLE
+        PS C:\> Get-DbaXESessionTarget -SqlInstance ServerA\sql987 -Session system_health
 
-        .EXAMPLE
-            Get-DbaXESession -SqlInstance sql2016 -Session system_health | Get-DbaXESessionTarget -Target package0.event_file
+        Shows targets for the system_health session on ServerA\sql987.
 
-            Return only the package0.event_file target for the system_health session on sql2016.
+    .EXAMPLE
+        PS C:\> Get-DbaXESession -SqlInstance sql2016 -Session system_health | Get-DbaXESessionTarget
+
+        Returns the targets for the system_health session on sql2016.
+
+    .EXAMPLE
+        PS C:\> Get-DbaXESession -SqlInstance sql2016 -Session system_health | Get-DbaXESessionTarget -Target package0.event_file
+
+        Return only the package0.event_file target for the system_health session on sql2016.
+
     #>
     [CmdletBinding(DefaultParameterSetName = "Default")]
     param (
         [parameter(ValueFromPipeline, ParameterSetName = "instance", Mandatory)]
-        [Alias("ServerInstance", "SqlServer")]
         [DbaInstanceParameter[]]$SqlInstance,
         [PSCredential]$SqlCredential,
         [string[]]$Session,
         [string[]]$Target,
         [parameter(ValueFromPipeline, ParameterSetName = "piped", Mandatory)]
         [Microsoft.SqlServer.Management.XEvent.Session[]]$InputObject,
-        [switch][Alias('Silent')]
-        $EnableException
+        [switch]$EnableException
     )
 
     begin {
@@ -98,11 +103,11 @@ function Get-DbaXESessionTarget {
                                 $file = "$directory\$file"
                             }
                             $filecollection += $file
-                            $remotefile += Join-AdminUnc -servername $server.netName -filepath $file
+                            $remotefile += Join-AdminUnc -servername $server.ComputerName -filepath $file
                         }
                     }
 
-                    Add-Member -Force -InputObject $xtarget -MemberType NoteProperty -Name ComputerName -Value $server.NetName
+                    Add-Member -Force -InputObject $xtarget -MemberType NoteProperty -Name ComputerName -Value $server.ComputerName
                     Add-Member -Force -InputObject $xtarget -MemberType NoteProperty -Name InstanceName -Value $server.ServiceName
                     Add-Member -Force -InputObject $xtarget -MemberType NoteProperty -Name SqlInstance -Value $server.DomainInstanceName
                     Add-Member -Force -InputObject $xtarget -MemberType NoteProperty -Name Session -Value $sessionname

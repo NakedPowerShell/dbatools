@@ -1,91 +1,92 @@
-#ValidationTags#CodeStyle,Messaging,FlowControl,Pipeline#
+
 function Get-DbaDbVirtualLogFile {
     <#
-        .SYNOPSIS
-            Returns database virtual log file information for database files on a SQL instance.
+    .SYNOPSIS
+        Returns database virtual log file information for database files on a SQL instance.
 
-        .DESCRIPTION
-            Having a transaction log file with too many virtual log files (VLFs) can hurt database performance.
+    .DESCRIPTION
+        Having a transaction log file with too many virtual log files (VLFs) can hurt database performance.
 
-            Too many VLFs can cause transaction log backups to slow down and can also slow down database recovery and, in extreme cases, even affect insert/update/delete performance.
+        Too many VLFs can cause transaction log backups to slow down and can also slow down database recovery and, in extreme cases, even affect insert/update/delete performance.
 
-            References:
-                http://www.sqlskills.com/blogs/kimberly/transaction-log-vlfs-too-many-or-too-few/
-                http://blogs.msdn.com/b/saponsqlserver/archive/2012/02/22/too-many-virtual-log-files-vlfs-can-cause-slow-database-recovery.aspx
+        References:
+        http://www.sqlskills.com/blogs/kimberly/transaction-log-vlfs-too-many-or-too-few/
+        http://blogs.msdn.com/b/saponsqlserver/archive/2012/02/22/too-many-virtual-log-files-vlfs-can-cause-slow-database-recovery.aspx
 
-            If you've got a high number of VLFs, you can use Expand-SqlTLogResponsibly to reduce the number.
+        If you've got a high number of VLFs, you can use Expand-DbaDbLogFile to reduce the number.
 
-        .PARAMETER SqlInstance
-            Specifies the SQL Server instance(s) to scan.
+    .PARAMETER SqlInstance
+        The target SQL Server instance or instances.
 
-        .PARAMETER SqlCredential
-            Login to the target instance using alternative credentials. Windows and SQL Authentication supported. Accepts credential objects (Get-Credential)
+    .PARAMETER SqlCredential
+        Login to the target instance using alternative credentials. Accepts PowerShell credentials (Get-Credential).
 
-        .PARAMETER Database
-            Specifies the database(s) to process. Options for this list are auto-populated from the server. If unspecified, all databases will be processed.
+        Windows Authentication, SQL Server Authentication, Active Directory - Password, and Active Directory - Integrated are all supported.
 
-        .PARAMETER ExcludeDatabase
-            Specifies the database(s) to exclude from processing. Options for this list are auto-populated from the server.
+        For MFA support, please use Connect-DbaInstance.
 
-        .PARAMETER IncludeSystemDBs
-            If this switch is enabled, system database information will be displayed.
+    .PARAMETER Database
+        Specifies the database(s) to process. Options for this list are auto-populated from the server. If unspecified, all databases will be processed.
 
-        .PARAMETER EnableException
-            By default, when something goes wrong we try to catch it, interpret it and give you a friendly warning message.
-            This avoids overwhelming you with "sea of red" exceptions, but is inconvenient because it basically disables advanced scripting.
-            Using this switch turns this "nice by default" feature off and enables you to catch exceptions with your own try/catch.
+    .PARAMETER ExcludeDatabase
+        Specifies the database(s) to exclude from processing. Options for this list are auto-populated from the server.
 
-        .NOTES
-            Tags: VLF, Database, LogFile
+    .PARAMETER IncludeSystemDBs
+        If this switch is enabled, system database information will be displayed.
 
-            Website: https://dbatools.io
-            Copyright: (C) Chrissy LeMaire, clemaire@gmail.com
-            License: MIT https://opensource.org/licenses/MIT
+    .PARAMETER EnableException
+        By default, when something goes wrong we try to catch it, interpret it and give you a friendly warning message.
+        This avoids overwhelming you with "sea of red" exceptions, but is inconvenient because it basically disables advanced scripting.
+        Using this switch turns this "nice by default" feature off and enables you to catch exceptions with your own try/catch.
 
-        .LINK
-            https://dbatools.io/Get-DbaDbVirtualLogFile
+    .NOTES
+        Tags: Diagnostic, VLF, Database, LogFile
+        Author: Chrissy LeMaire (@cl), netnerds.net
 
-        .EXAMPLE
-            Get-DbaDbVirtualLogFile -SqlInstance sqlcluster
+        Website: https://dbatools.io
+        Copyright: (c) 2018 by dbatools, licensed under MIT
+        License: MIT https://opensource.org/licenses/MIT
 
-            Returns all user database virtual log file details for the sqlcluster instance.
+    .LINK
+        https://dbatools.io/Get-DbaDbVirtualLogFile
 
-        .EXAMPLE
-            Get-DbaDbVirtualLogFile -SqlInstance sqlserver | Group-Object -Property Database | Where-Object Count -gt 50
+    .EXAMPLE
+        PS C:\> Get-DbaDbVirtualLogFile -SqlInstance sqlcluster
 
-            Returns user databases that have 50 or more VLFs.
+        Returns all user database virtual log file details for the sqlcluster instance.
 
-        .EXAMPLE
-            @('sqlserver','sqlcluster') | Get-DbaDbVirtualLogFile
+    .EXAMPLE
+        PS C:\> Get-DbaDbVirtualLogFile -SqlInstance sqlserver | Group-Object -Property Database | Where-Object Count -gt 50
 
-            Returns all VLF information for the sqlserver and sqlcluster SQL Server instances. Processes data via the pipeline.
+        Returns user databases that have 50 or more VLFs.
 
-        .EXAMPLE
-            Get-DbaDbVirtualLogFile -SqlInstance sqlcluster -Database db1, db2
+    .EXAMPLE
+        PS C:\> 'sqlserver','sqlcluster' | Get-DbaDbVirtualLogFile
 
-            Returns the VLF counts for the db1 and db2 databases on sqlcluster.
+        Returns all VLF information for the sqlserver and sqlcluster SQL Server instances. Processes data via the pipeline.
+
+    .EXAMPLE
+        PS C:\> Get-DbaDbVirtualLogFile -SqlInstance sqlcluster -Database db1, db2
+
+        Returns the VLF counts for the db1 and db2 databases on sqlcluster.
+
     #>
     [CmdletBinding()]
     [OutputType([System.Collections.ArrayList])]
-    param ([parameter(ValueFromPipeline, Mandatory = $true)]
-        [Alias("ServerInstance", "SqlServer")]
+    param ([parameter(ValueFromPipeline, Mandatory)]
         [DbaInstanceParameter[]]$SqlInstance,
         [PSCredential]$SqlCredential,
-        [Alias("Databases")]
         [object[]]$Database,
         [object[]]$ExcludeDatabase,
         [switch]$IncludeSystemDBs,
-        [Alias('Silent')]
         [switch]$EnableException
     )
 
     process {
         foreach ($instance in $SqlInstance) {
             try {
-                Write-Message -Level Verbose -Message "Connecting to $instance."
-                $server = Connect-SqlInstance -SqlInstance $instance -SqlCredential $sqlcredential
-            }
-            catch {
+                $server = Connect-DbaInstance -SqlInstance $instance -SqlCredential $SqlCredential
+            } catch {
                 Stop-Function -Message "Failure" -Category ConnectionError -ErrorRecord $_ -Target $instance -Continue
             }
 
@@ -108,7 +109,7 @@ function Get-DbaDbVirtualLogFile {
 
                     foreach ($d in $data) {
                         [pscustomobject]@{
-                            ComputerName   = $server.NetName
+                            ComputerName   = $server.ComputerName
                             InstanceName   = $server.ServiceName
                             SqlInstance    = $server.DomainInstanceName
                             Database       = $db.Name
@@ -122,8 +123,7 @@ function Get-DbaDbVirtualLogFile {
                             CreateLsn      = $d.CreateLSN
                         }
                     }
-                }
-                catch {
+                } catch {
                     Stop-Function -Message "Unable to query $($db.name) on $instance." -ErrorRecord $_ -Target $db -Continue
                 }
             }

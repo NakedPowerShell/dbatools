@@ -1,91 +1,139 @@
-#ValidationTags#Messaging,FlowControl,Pipeline,CodeStyle#
 function Add-DbaComputerCertificate {
     <#
-        .SYNOPSIS
-            Adds a computer certificate - useful for older systems.
+    .SYNOPSIS
+        Adds a computer certificate - useful for older systems.
 
-        .DESCRIPTION
-            Adds a computer certificate from a local or remote computer.
+    .DESCRIPTION
+        Adds a computer certificate from a local or remote computer.
 
-        .PARAMETER ComputerName
-            The target SQL Server. Defaults to localhost.
+    .PARAMETER ComputerName
+        The target SQL Server instance or instances. Defaults to localhost.
 
-        .PARAMETER Credential
-            Allows you to login to $ComputerName using alternative credentials.
+    .PARAMETER Credential
+        Allows you to login to $ComputerName using alternative credentials.
 
-        .PARAMETER Password
-            The password for the certificate, if it is password protected.
+    .PARAMETER SecurePassword
+        The password for the certificate, if it is password protected.
 
-        .PARAMETER Certificate
-            The target certificate object.
+    .PARAMETER Certificate
+        The target certificate object.
 
-        .PARAMETER Path
-            The local path to the target certificate object.
+    .PARAMETER Path
+        The local path to the target certificate object.
 
-        .PARAMETER Store
-            Certificate store. Default is LocalMachine.
+    .PARAMETER Store
+        Certificate store. Default is LocalMachine.
 
-        .PARAMETER Folder
-            Certificate folder. Default is My (Personal).
+    .PARAMETER Folder
+        Certificate folder. Default is My (Personal).
 
-        .PARAMETER EnableException
-            By default, when something goes wrong we try to catch it, interpret it and give you a friendly warning message.
-            This avoids overwhelming you with "sea of red" exceptions, but is inconvenient because it basically disables advanced scripting.
-            Using this switch turns this "nice by default" feature off and enables you to catch exceptions with your own try/catch.
+    .PARAMETER Flag
+        Defines where and how to import the private key of an X.509 certificate.
 
-        .PARAMETER WhatIf
-            If this switch is enabled, no actions are performed but informational messages will be displayed that explain what would happen if the command were to run.
+        Defaults to: Exportable, PersistKeySet
 
-        .PARAMETER Confirm
-            If this switch is enabled, you will be prompted for confirmation before executing any operations that change state.
+            EphemeralKeySet
+            The key associated with a PFX file is created in memory and not persisted on disk when importing a certificate.
 
-        .NOTES
-            Tags: Certificate
+            Exportable
+            Imported keys are marked as exportable.
 
-            Website: https://dbatools.io
-            Copyright: (C) Chrissy LeMaire, clemaire@gmail.com
-            License: MIT https://opensource.org/licenses/MIT
+            NonExportable
+            Expliictly mark keys as nonexportable.
 
-        .EXAMPLE
-            Add-DbaComputerCertificate -ComputerName Server1 -Path C:\temp\cert.cer
+            PersistKeySet
+            The key associated with a PFX file is persisted when importing a certificate.
 
-            Adds the local C:\temp\cert.cer to the remote server Server1 in LocalMachine\My (Personal).
+            UserProtected
+            Notify the user through a dialog box or other method that the key is accessed. The Cryptographic Service Provider (CSP) in use defines the precise behavior. NOTE: This can only be used when you add a certificate to localhost, as it causes a prompt to appear.
 
-        .EXAMPLE
-            Add-DbaComputerCertificate -Path C:\temp\cert.cer
+    .PARAMETER EnableException
+        By default, when something goes wrong we try to catch it, interpret it and give you a friendly warning message.
+        This avoids overwhelming you with "sea of red" exceptions, but is inconvenient because it basically disables advanced scripting.
+        Using this switch turns this "nice by default" feature off and enables you to catch exceptions with your own try/catch.
 
-            Adds the local C:\temp\cert.cer to the local computer's LocalMachine\My (Personal) certificate store.
+    .PARAMETER WhatIf
+        If this switch is enabled, no actions are performed but informational messages will be displayed that explain what would happen if the command were to run.
+
+    .PARAMETER Confirm
+        If this switch is enabled, you will be prompted for confirmation before executing any operations that change state.
+
+    .NOTES
+        Tags: Certificate, Security
+        Author: Chrissy LeMaire (@cl), netnerds.net
+
+        Website: https://dbatools.io
+        Copyright: (c) 2018 by dbatools, licensed under MIT
+        License: MIT https://opensource.org/licenses/MIT
+
+    .LINK
+        https://dbatools.io/Add-DbaComputerCertificate
+
+    .EXAMPLE
+        PS C:\> Add-DbaComputerCertificate -ComputerName Server1 -Path C:\temp\cert.cer
+
+        Adds the local C:\temp\cert.cer to the remote server Server1 in LocalMachine\My (Personal).
+
+    .EXAMPLE
+        PS C:\> Add-DbaComputerCertificate -Path C:\temp\cert.cer
+
+        Adds the local C:\temp\cert.cer to the local computer's LocalMachine\My (Personal) certificate store.
+
+    .EXAMPLE
+        PS C:\> Add-DbaComputerCertificate -Path C:\temp\cert.cer
+
+        Adds the local C:\temp\cert.cer to the local computer's LocalMachine\My (Personal) certificate store.
+
+    .EXAMPLE
+        PS C:\> Add-DbaComputerCertificate -ComputerName sql01 -Path C:\temp\sql01.pfx -Confirm:$false -Flag NonExportable
+
+        Adds the local C:\temp\sql01.pfx to sql01's LocalMachine\My (Personal) certificate store and marks the private key as non-exportable. Skips confirmation prompt.
+
     #>
-    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = "High")]
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = "Low")]
     param (
-        [Alias("ServerInstance", "SqlServer", "SqlInstance")]
         [DbaInstance[]]$ComputerName = $env:COMPUTERNAME,
         [PSCredential]$Credential,
-        [securestring]$Password,
+        [Alias("Password")]
+        [SecureString]$SecurePassword,
         [parameter(ValueFromPipeline)]
         [System.Security.Cryptography.X509Certificates.X509Certificate2[]]$Certificate,
         [string]$Path,
         [string]$Store = "LocalMachine",
         [string]$Folder = "My",
-        [Alias('Silent')]
+        [ValidateSet("EphemeralKeySet", "Exportable", "PersistKeySet", "UserProtected", "NonExportable")]
+        [string[]]$Flag = @("Exportable", "PersistKeySet"),
         [switch]$EnableException
     )
-
     begin {
+        if ("NonExportable" -in $Flag) {
+            $flags = ($Flag | Where-Object { $PSItem -ne "Exportable" -and $PSItem -ne "NonExportable" } ) -join ","
 
+            # It needs at least one flag
+            if (-not $flags) {
+                if ($Store -eq "LocalMachine") {
+                    $flags = "MachineKeySet"
+                } else {
+                    $flags = "UserKeySet"
+                }
+            }
+        } else {
+            $flags = $Flag -join ","
+        }
+
+        Write-Message -Level Verbose -Message "Flags: $flags"
         if ($Path) {
-            if (!(Test-Path -Path $Path)) {
+            if (-not (Test-Path -Path $Path)) {
                 Stop-Function -Message "Path ($Path) does not exist." -Category InvalidArgument
                 return
             }
 
             try {
-                # This may be too much, but ¯\_(ツ)_/¯
+                # local has to be exportable to export to remote
                 $bytes = [System.IO.File]::ReadAllBytes($Path)
                 $Certificate = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2
-                $Certificate.Import($bytes, $Password, [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::DefaultKeySet)
-            }
-            catch {
+                $null = $Certificate.Import($bytes, $SecurePassword, "Exportable, PersistKeySet")
+            } catch {
                 Stop-Function -Message "Can't import certificate." -ErrorRecord $_
                 return
             }
@@ -93,26 +141,23 @@ function Add-DbaComputerCertificate {
 
         #region Remoting Script
         $scriptBlock = {
-
             param (
                 $CertificateData,
-
-                [securestring]$Password,
-
+                [SecureString]$SecurePassword,
                 $Store,
-
-                $Folder
+                $Folder,
+                $flags
             )
 
             $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2
-            $cert.Import($CertificateData, $Password, [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::DefaultKeySet)
-            Write-Message -Level Verbose -Message "Importing cert to $Folder\$Store"
+            $cert.Import($CertificateData, $SecurePassword, $flags)
+            Write-Verbose -Message "Importing cert to $Folder\$Store using flags: $flags"
             $tempStore = New-Object System.Security.Cryptography.X509Certificates.X509Store($Folder, $Store)
             $tempStore.Open('ReadWrite')
             $tempStore.Add($cert)
             $tempStore.Close()
 
-            Write-Message -Level Verbose -Message "Searching Cert:\$Store\$Folder"
+            Write-Verbose -Message "Searching Cert:\$Store\$Folder"
             Get-ChildItem "Cert:\$Store\$Folder" -Recurse | Where-Object { $_.Thumbprint -eq $cert.Thumbprint }
         }
         #endregion Remoting Script
@@ -126,22 +171,21 @@ function Add-DbaComputerCertificate {
         }
 
         foreach ($cert in $Certificate) {
-
             try {
-                $certData = $cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::PFX, $Password)
-            }
-            catch {
+                $certData = $cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::PFX, $SecurePassword)
+            } catch {
                 Stop-Function -Message "Can't export certificate" -ErrorRecord $_ -Continue
             }
 
             foreach ($computer in $ComputerName) {
-
-                if ($PScmdlet.ShouldProcess("local", "Connecting to $computer to import cert")) {
-                    try {
-                        Invoke-Command2 -ComputerName $computer -Credential $Credential -ArgumentList $certdata, $Password, $Store, $Folder -ScriptBlock $scriptblock -ErrorAction Stop |
-                            Select-DefaultView -Property FriendlyName, DnsNameList, Thumbprint, NotBefore, NotAfter, Subject, Issuer
+                if ($PSCmdlet.ShouldProcess("$computer", "Attempting to import cert")) {
+                    if ($flags -contains "UserProtected" -and -not $computer.IsLocalHost) {
+                        Stop-Function -Message "UserProtected flag is only valid for localhost because it causes a prompt, skipping for $computer" -Continue
                     }
-                    catch {
+                    try {
+                        Invoke-Command2 -ComputerName $computer -Credential $Credential -ArgumentList $certdata, $SecurePassword, $Store, $Folder, $flags -ScriptBlock $scriptBlock -ErrorAction Stop |
+                            Select-DefaultView -Property FriendlyName, DnsNameList, Thumbprint, NotBefore, NotAfter, Subject, Issuer
+                    } catch {
                         Stop-Function -Message "Failure" -ErrorRecord $_ -Target $computer -Continue
                     }
                 }

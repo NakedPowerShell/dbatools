@@ -1,6 +1,17 @@
 $CommandName = $MyInvocation.MyCommand.Name.Replace(".Tests.ps1", "")
-Write-Host -Object "Running $PSCommandpath" -ForegroundColor Cyan
+Write-Host -Object "Running $PSCommandPath" -ForegroundColor Cyan
 . "$PSScriptRoot\constants.ps1"
+
+Describe "$CommandName Unit Tests" -Tag 'UnitTests' {
+    Context "Validate parameters" {
+        [object[]]$params = (Get-Command $CommandName).Parameters.Keys | Where-Object {$_ -notin ('whatif', 'confirm')}
+        [object[]]$knownParameters = 'SqlInstance', 'SqlCredential', 'Database', 'ExcludeDatabase', 'Snapshot', 'InputObject', 'AllSnapshots', 'Force', 'EnableException'
+        $knownParameters += [System.Management.Automation.PSCmdlet]::CommonParameters
+        It "Should only contain our specific parameters" {
+            (@(Compare-Object -ReferenceObject ($knownParameters | Where-Object {$_}) -DifferenceObject $params).Count ) | Should Be 0
+        }
+    }
+}
 
 # Targets only instance2 because it's the only one where Snapshots can happen
 Describe "$commandname Integration Tests" -Tag "IntegrationTests" {
@@ -23,7 +34,7 @@ Describe "$commandname Integration Tests" -Tag "IntegrationTests" {
     }
     Context "Parameters validation" {
         It "Stops if no Database or AllDatabases" {
-            { Remove-DbaDbSnapshot -SqlInstance $script:instance2 -EnableException } | Should Throw "You must pipe"
+            { Remove-DbaDbSnapshot -SqlInstance $script:instance2 -EnableException -WarningAction SilentlyContinue } | Should Throw "You must pipe"
         }
         It "Is nice by default" {
             { Remove-DbaDbSnapshot -SqlInstance $script:instance2 *> $null } | Should Not Throw "You must pipe"
@@ -53,7 +64,7 @@ Describe "$commandname Integration Tests" -Tag "IntegrationTests" {
             $results.Count | Should Be 3
         }
         It "Honors the Snapshot parameter" {
-            $result = Remove-DbaDbSnapshot -SqlInstance $script:instance2 -Snapshot $db1_snap1
+            $result = Remove-DbaDbSnapshot -SqlInstance $script:instance2 -Snapshot $db1_snap1 -Confirm:$false
             $result.Name | Should Be $db1_snap1
         }
         It "Works with piped snapshots" {

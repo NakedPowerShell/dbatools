@@ -27,48 +27,63 @@ function Invoke-ManagedComputerCommand {
     #>
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory = $true)]
+        [Parameter(Mandatory)]
         [Alias("Server")]
         [dbainstanceparameter]$ComputerName,
         [PSCredential]$Credential,
-        [Parameter(Mandatory = $true)]
+        [Parameter(Mandatory)]
         [scriptblock]$ScriptBlock,
-        [string[]]$ArgumentList,
-        [switch][Alias('Silent')]
-        $EnableException # Left in for legacy but this command needs to throw
+        [object[]]$ArgumentList,
+        [switch]$EnableException # Left in for legacy but this command needs to throw
     )
-    
+
     $computer = $ComputerName.ComputerName
-    
+
     $null = Test-ElevationRequirement -ComputerName $computer -EnableException $true
-    
+
     $resolved = Resolve-DbaNetworkName -ComputerName $computer -Turbo
     $ipaddr = $resolved.IpAddress
     $ArgumentList += $ipaddr
-    
+
     [scriptblock]$setupScriptBlock = {
         $ipaddr = $args[$args.GetUpperBound(0)]
-        
+
+        $setupVerbose = @( )
+        $setupVerbose += "Starting WMI initialization at $ipaddr"
+
         # Just in case we go remote, ensure the assembly is loaded
         [void][System.Reflection.Assembly]::LoadWithPartialName('Microsoft.SqlServer.SqlWmiManagement')
         $wmi = New-Object Microsoft.SqlServer.Management.Smo.Wmi.ManagedComputer $ipaddr
-        $null = $wmi.Initialize()
+        $result = $wmi.Initialize()
+
+        $setupVerbose += "Finished WMI initialization with $result"
     }
-    
+
     $prescriptblock = $setupScriptBlock.ToString()
     $postscriptblock = $ScriptBlock.ToString()
-    
-    $scriptblock = [ScriptBlock]::Create("$prescriptblock  $postscriptblock")
-    
+
+    $scriptBlock = [ScriptBlock]::Create("$prescriptblock  $postscriptblock")
+    Write-Message -Level Verbose -Message "Connecting to SQL WMI on $computer."
+
     try {
-        Invoke-Command2 -ScriptBlock $ScriptBlock -ArgumentList $ArgumentList -Credential $Credential -ErrorAction Stop
-    }
-    catch {
+        $result = Invoke-Command2 -ScriptBlock $ScriptBlock -ArgumentList $ArgumentList -Credential $Credential -ErrorAction Stop
+        if ($result.Exception) {
+            # The new code pattern for WMI calls like in Set-DbaNetworkConfiguration is used where all exceptions are catched and return as part of an object.
+            foreach ($msg in $result.Verbose) {
+                Write-Message -Level Verbose -Message $msg
+            }
+            Write-Message -Level Verbose -Message "Execution against $computer failed with: $($result.Exception)"
+            Stop-Function -Message "Failed." -Target $computer -ErrorRecord $result.Exception -EnableException $true
+        } else {
+            # The old code pattern is used or no exception was catched, so just return the result
+            $result
+        }
+    } catch {
         Write-Message -Level Verbose -Message "Local connection attempt to $computer failed. Connecting remotely."
-        
+
         # For surely resolve stuff, and going by default with kerberos, this needs to match FullComputerName
         $hostname = $resolved.FullComputerName
-        
-        Invoke-Command2 -ScriptBlock $ScriptBlock -ArgumentList $ArgumentList -ComputerName $hostname -ErrorAction Stop
+
+        Invoke-Command2 -ScriptBlock $ScriptBlock -ArgumentList $ArgumentList -ComputerName $hostname -Credential $Credential -ErrorAction Stop
     }
 }

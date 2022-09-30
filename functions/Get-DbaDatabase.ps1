@@ -1,161 +1,162 @@
-#ValidationTags#CodeStyle,Messaging,FlowControl,Pipeline#
 function Get-DbaDatabase {
     <#
-        .SYNOPSIS
-            Gets SQL Database information for each database that is present on the target instance(s) of SQL Server.
+    .SYNOPSIS
+        Gets SQL Database information for each database that is present on the target instance(s) of SQL Server.
 
-        .DESCRIPTION
-            The Get-DbaDatabase command gets SQL database information for each database that is present on the target instance(s) of
-            SQL Server. If the name of the database is provided, the command will return only the specific database information.
+    .DESCRIPTION
+        The Get-DbaDatabase command gets SQL database information for each database that is present on the target instance(s) of
+        SQL Server. If the name of the database is provided, the command will return only the specific database information.
 
-         .PARAMETER SqlInstance
-            The SQL Server instance to connect to.
+    .PARAMETER SqlInstance
+        The target SQL Server instance or instances.
 
-        .PARAMETER SqlCredential
-            Login to the target instance using alternative credentials. Windows and SQL Authentication supported. Accepts credential objects (Get-Credential)
+    .PARAMETER SqlCredential
+        Login to the target instance using alternative credentials. Accepts PowerShell credentials (Get-Credential).
 
-        .PARAMETER Database
-            Specifies one or more database(s) to process. If unspecified, all databases will be processed.
+        Windows Authentication, SQL Server Authentication, Active Directory - Password, and Active Directory - Integrated are all supported.
 
-        .PARAMETER ExcludeDatabase
-            Specifies one or more database(s) to exclude from processing.
+        For MFA support, please use Connect-DbaInstance.
 
-        .PARAMETER ExcludeAllUserDb
-            If this switch is enabled, only databases which are not User databases will be processed.
+    .PARAMETER Database
+        Specifies one or more database(s) to process. If unspecified, all databases will be processed.
 
-            This parameter cannot be used with -ExcludeAllSystemDb.
+    .PARAMETER ExcludeDatabase
+        Specifies one or more database(s) to exclude from processing.
 
-        .PARAMETER ExcludeAllSystemDb
-            If this switch is enabled, only databases which are not System databases will be processed.
+    .PARAMETER ExcludeUser
+        If this switch is enabled, only databases which are not User databases will be processed.
 
-            This parameter cannot be used with -ExcludeAllUserDb.
+        This parameter cannot be used with -ExcludeSystem.
 
-        .PARAMETER Status
-            Specifies one or more database statuses to filter on. Only databases in the status(es) listed will be returned. Valid options for this parameter are 'Emergency', 'Normal', 'Offline', 'Recovering', 'Restoring', 'Standby', and 'Suspect'.
+    .PARAMETER ExcludeSystem
+        If this switch is enabled, only databases which are not System databases will be processed.
 
-        .PARAMETER Access
-            Filters databases returned by their access type. Valid options for this parameter are 'ReadOnly' and 'ReadWrite'. If omitted, no filtering is performed.
+        This parameter cannot be used with -ExcludeUser.
 
-        .PARAMETER Owner
-            Specifies one or more database owners. Only databases owned by the listed owner(s) will be returned.
+    .PARAMETER Status
+        Specifies one or more database statuses to filter on. Only databases in the status(es) listed will be returned. Valid options for this parameter are 'Emergency', 'Normal', 'Offline', 'Recovering', 'Restoring', 'Standby', and 'Suspect'.
 
-        .PARAMETER Encrypted
-            If this switch is enabled, only databases which have Transparent Data Encryption (TDE) enabled will be returned.
+    .PARAMETER Access
+        Filters databases returned by their access type. Valid options for this parameter are 'ReadOnly' and 'ReadWrite'. If omitted, no filtering is performed.
 
-        .PARAMETER RecoveryModel
-            Filters databases returned by their recovery model. Valid options for this parameter are 'Full', 'Simple', and 'BulkLogged'.
+    .PARAMETER Owner
+        Specifies one or more database owners. Only databases owned by the listed owner(s) will be returned.
 
-        .PARAMETER NoFullBackup
-            If this switch is enabled, only databases without a full backup recorded by SQL Server will be returned. This will also indicate which of these databases only have CopyOnly full backups.
+    .PARAMETER Encrypted
+        If this switch is enabled, only databases which have Transparent Data Encryption (TDE) enabled will be returned.
 
-        .PARAMETER NoFullBackupSince
-            Only databases which haven't had a full backup since the specified DateTime will be returned.
+    .PARAMETER RecoveryModel
+        Filters databases returned by their recovery model. Valid options for this parameter are 'Full', 'Simple', and 'BulkLogged'.
 
-        .PARAMETER NoLogBackup
-            If this switch is enabled, only databases without a log backup recorded by SQL Server will be returned. This will also indicate which of these databases only have CopyOnly log backups.
+    .PARAMETER NoFullBackup
+        If this switch is enabled, only databases without a full backup recorded by SQL Server will be returned. This will also indicate which of these databases only have CopyOnly full backups.
 
-        .PARAMETER NoLogBackupSince
-            Only databases which haven't had a log backup since the specified DateTime will be returned.
+    .PARAMETER NoFullBackupSince
+        Only databases which haven't had a full backup since the specified DateTime will be returned.
 
-        .PARAMETER IncludeLastUsed
-            If this switch is enabled, the last used read & write times for each database will be returned. This data is retrieved from sys.dm_db_index_usage_stats which is reset when SQL Server is restarted.
+    .PARAMETER NoLogBackup
+        If this switch is enabled, only databases without a log backup recorded by SQL Server will be returned.
 
-        .PARAMETER OnlyAccessible
-           If this switch is enabled, only accessible databases are returned (huge speedup in SMO enumeration)
+    .PARAMETER NoLogBackupSince
+        Only databases which haven't had a log backup since the specified DateTime will be returned.
 
-        .PARAMETER WhatIf
-            If this switch is enabled, no actions are performed but informational messages will be displayed that explain what would happen if the command were to run.
+    .PARAMETER IncludeLastUsed
+        If this switch is enabled, the last used read & write times for each database will be returned. This data is retrieved from sys.dm_db_index_usage_stats which is reset when SQL Server is restarted.
 
-        .PARAMETER Confirm
-            If this switch is enabled, you will be prompted for confirmation before executing any operations that change state.
+    .PARAMETER OnlyAccessible
+        If this switch is enabled, only accessible databases are returned (huge speedup in SMO enumeration)
 
-        .PARAMETER EnableException
-            By default, when something goes wrong we try to catch it, interpret it and give you a friendly warning message.
-            This avoids overwhelming you with "sea of red" exceptions, but is inconvenient because it basically disables advanced scripting.
-            Using this switch turns this "nice by default" feature off and enables you to catch exceptions with your own try/catch.
+    .PARAMETER WhatIf
+        If this switch is enabled, no actions are performed but informational messages will be displayed that explain what would happen if the command were to run.
 
-        .NOTES
-            Tags: Database
-            Author: Garry Bargsley (@gbargsley | http://blog.garrybargsley.com)
-            Author: Klaas Vandenberghe ( @PowerDbaKlaas )
-            Author: Simone Bizzotto ( @niphlod )
+    .PARAMETER Confirm
+        If this switch is enabled, you will be prompted for confirmation before executing any operations that change state.
 
-            Website: https://dbatools.io
-            Copyright: (C) Chrissy LeMaire, clemaire@gmail.com
-            License: MIT https://opensource.org/licenses/MIT
+    .PARAMETER EnableException
+        By default, when something goes wrong we try to catch it, interpret it and give you a friendly warning message.
+        This avoids overwhelming you with "sea of red" exceptions, but is inconvenient because it basically disables advanced scripting.
+        Using this switch turns this "nice by default" feature off and enables you to catch exceptions with your own try/catch.
 
-        .LINK
-            https://dbatools.io/Get-DbaDatabase
+    .NOTES
+        Tags: Database
+        Author: Garry Bargsley (@gbargsley), blog.garrybargsley.com | Klaas Vandenberghe (@PowerDbaKlaas) | Simone Bizzotto (@niphlod)
 
-        .EXAMPLE
-            Get-DbaDatabase -SqlInstance localhost
+        Website: https://dbatools.io
+        Copyright: (c) 2018 by dbatools, licensed under MIT
+        License: MIT https://opensource.org/licenses/MIT
 
-            Returns all databases on the local default SQL Server instance.
+    .LINK
+        https://dbatools.io/Get-DbaDatabase
 
-        .EXAMPLE
-            Get-DbaDatabase -SqlInstance localhost -ExcludeAllUserDb
+    .EXAMPLE
+        PS C:\> Get-DbaDatabase -SqlInstance localhost
 
-            Returns only the system databases on the local default SQL Server instance.
+        Returns all databases on the local default SQL Server instance.
 
-        .EXAMPLE
-            Get-DbaDatabase -SqlInstance localhost -ExcludeAllSystemDb
+    .EXAMPLE
+        PS C:\> Get-DbaDatabase -SqlInstance localhost -ExcludeUser
 
-            Returns only the user databases on the local default SQL Server instance.
+        Returns only the system databases on the local default SQL Server instance.
 
-        .EXAMPLE
-            'localhost','sql2016' | Get-DbaDatabase
+    .EXAMPLE
+        PS C:\> Get-DbaDatabase -SqlInstance localhost -ExcludeSystem
 
-            Returns databases on multiple instances piped into the function.
+        Returns only the user databases on the local default SQL Server instance.
 
-        .EXAMPLE
-            Get-DbaDatabase -SqlInstance SQL1\SQLExpress -RecoveryModel full,Simple
+    .EXAMPLE
+        PS C:\> 'localhost','sql2016' | Get-DbaDatabase
 
-            Returns only the user databases in Full or Simple recovery model from SQL Server instance SQL1\SQLExpress.
+        Returns databases on multiple instances piped into the function.
 
-        .EXAMPLE
-            Get-DbaDatabase -SqlInstance SQL1\SQLExpress -Status Normal
+    .EXAMPLE
+        PS C:\> Get-DbaDatabase -SqlInstance SQL1\SQLExpress -RecoveryModel full,Simple
 
-            Returns only the user databases with status 'normal' from SQL Server instance SQL1\SQLExpress.
+        Returns only the user databases in Full or Simple recovery model from SQL Server instance SQL1\SQLExpress.
 
-        .EXAMPLE
-            Get-DbaDatabase -SqlInstance SQL1\SQLExpress -IncludeLastUsed
+    .EXAMPLE
+        PS C:\> Get-DbaDatabase -SqlInstance SQL1\SQLExpress -Status Normal
 
-            Returns the databases from SQL Server instance SQL1\SQLExpress and includes the last used information
-            from the sys.dm_db_index_usage_stats DMV.
+        Returns only the user databases with status 'normal' from SQL Server instance SQL1\SQLExpress.
 
-        .EXAMPLE
-            Get-DbaDatabase -SqlInstance SQL1\SQLExpress,SQL2 -ExcludeDatabase model,master
+    .EXAMPLE
+        PS C:\> Get-DbaDatabase -SqlInstance SQL1\SQLExpress -IncludeLastUsed
 
-            Returns all databases except master and model from SQL Server instances SQL1\SQLExpress and SQL2.
+        Returns the databases from SQL Server instance SQL1\SQLExpress and includes the last used information
+        from the sys.dm_db_index_usage_stats DMV.
 
-        .EXAMPLE
-            Get-DbaDatabase -SqlInstance SQL1\SQLExpress,SQL2 -Encrypted
+    .EXAMPLE
+        PS C:\> Get-DbaDatabase -SqlInstance SQL1\SQLExpress,SQL2 -ExcludeDatabase model,master
 
-            Returns only databases using TDE from SQL Server instances SQL1\SQLExpress and SQL2.
+        Returns all databases except master and model from SQL Server instances SQL1\SQLExpress and SQL2.
 
-        .EXAMPLE
-            Get-DbaDatabase -SqlInstance SQL1\SQLExpress,SQL2 -Access ReadOnly
+    .EXAMPLE
+        PS C:\> Get-DbaDatabase -SqlInstance SQL1\SQLExpress,SQL2 -Encrypted
 
-            Returns only read only databases from SQL Server instances SQL1\SQLExpress and SQL2.
+        Returns only databases using TDE from SQL Server instances SQL1\SQLExpress and SQL2.
 
-        .EXAMPLE
-            Get-DbaDatabase -SqlInstance SQL2,SQL3 -Database OneDB,OtherDB
+    .EXAMPLE
+        PS C:\> Get-DbaDatabase -SqlInstance SQL1\SQLExpress,SQL2 -Access ReadOnly
 
-            Returns databases 'OneDb' and 'OtherDB' from SQL Server instances SQL2 and SQL3 if databases by those names exist on those instances.
+        Returns only read only databases from SQL Server instances SQL1\SQLExpress and SQL2.
+
+    .EXAMPLE
+        PS C:\> Get-DbaDatabase -SqlInstance SQL2,SQL3 -Database OneDB,OtherDB
+
+        Returns databases 'OneDb' and 'OtherDB' from SQL Server instances SQL2 and SQL3 if databases by those names exist on those instances.
+
     #>
     [CmdletBinding(DefaultParameterSetName = "Default")]
-    Param (
-        [parameter(Position = 0, Mandatory = $true, ValueFromPipeline = $True)]
-        [Alias("ServerInstance", "SqlServer")]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute("PSUseSingularNouns", "", Justification = "Internal functions are ignored")]
+    param (
+        [parameter(Mandatory, ValueFromPipeline)]
         [DbaInstanceParameter[]]$SqlInstance,
         [PSCredential]$SqlCredential,
-        [Alias("Databases")]
-        [object[]]$Database,
-        [object[]]$ExcludeDatabase,
-        [Alias("SystemDbOnly", "NoUserDb")]
-        [switch]$ExcludeAllUserDb,
-        [Alias("UserDbOnly", "NoSystemDb")]
-        [switch]$ExcludeAllSystemDb,
+        [string[]]$Database,
+        [string[]]$ExcludeDatabase,
+        [Alias("SystemDbOnly", "NoUserDb", "ExcludeAllUserDb")]
+        [switch]$ExcludeUser,
+        [Alias("UserDbOnly", "NoSystemDb", "ExcludeAllSystemDb")]
+        [switch]$ExcludeSystem,
         [string[]]$Owner,
         [switch]$Encrypted,
         [ValidateSet('EmergencyMode', 'Normal', 'Offline', 'Recovering', 'Restoring', 'Standby', 'Suspect')]
@@ -168,7 +169,6 @@ function Get-DbaDatabase {
         [datetime]$NoFullBackupSince,
         [switch]$NoLogBackup,
         [datetime]$NoLogBackupSince,
-        [Alias('Silent')]
         [switch]$EnableException,
         [switch]$IncludeLastUsed,
         [switch]$OnlyAccessible
@@ -176,8 +176,8 @@ function Get-DbaDatabase {
 
     begin {
 
-        if ($ExcludeAllUserDb -and $ExcludeAllSystemDb) {
-            Stop-Function -Message "You cannot specify both ExcludeAllUserDb and ExcludeAllSystemDb." -Continue -EnableException $EnableException
+        if ($ExcludeUser -and $ExcludeSystem) {
+            Stop-Function -Message "You cannot specify both ExcludeUser and ExcludeSystem." -Continue -EnableException $EnableException
         }
 
     }
@@ -186,17 +186,14 @@ function Get-DbaDatabase {
 
         foreach ($instance in $SqlInstance) {
             try {
-                Write-Message -Level Verbose -Message "Connecting to $instance."
-                $server = Connect-SqlInstance -SqlInstance $instance -SqlCredential $sqlcredential
-            }
-            catch {
+                $server = Connect-DbaInstance -SqlInstance $instance -SqlCredential $SqlCredential
+            } catch {
                 Stop-Function -Message "Failure" -Category ConnectionError -ErrorRecord $_ -Target $instance -Continue
             }
 
             if (!$IncludeLastUsed) {
                 $dblastused = $null
-            }
-            else {
+            } else {
                 ## Get last used information from the DMV
                 $querylastused = "WITH agg AS
                 (
@@ -236,13 +233,11 @@ function Get-DbaDatabase {
                 $dblastused = Invoke-QueryDBlastUsed
             }
 
-            if ($ExcludeAllUserDb) {
+            if ($ExcludeUser) {
                 $DBType = @($true)
-            }
-            elseif ($ExcludeAllSystemDb) {
+            } elseif ($ExcludeSystem) {
                 $DBType = @($false)
-            }
-            else {
+            } else {
                 $DBType = @($false, $true)
             }
 
@@ -256,18 +251,37 @@ function Get-DbaDatabase {
                 'ReadWrite' { @($false) }
                 default { @($true, $false) }
             }
-            $Encrypt = switch (Test-Bound $Encrypted) {
+            $Encrypt = switch (Test-Bound -Parameter 'Encrypted') {
                 $true { @($true) }
                 default { @($true, $false, $null) }
             }
             function Invoke-QueryRawDatabases {
-                if ($server.VersionMajor -eq 8) {
-                    $server.Query("SELECT *, SUSER_NAME(sid) AS [Owner] FROM master.dbo.sysdatabases")
-                }
-                else {
-                    $server.Query("SELECT *, SUSER_NAME(owner_sid) AS [Owner] FROM sys.databases")
+                try {
+                    if ($server.isAzure) {
+                        $dbquery = "SELECT db.name, db.state, dp.name AS [Owner] FROM sys.databases AS db LEFT JOIN sys.database_principals AS dp ON dp.sid = db.owner_sid"
+                        $server.ConnectionContext.ExecuteWithResults($dbquery).Tables
+                    } elseif ($server.VersionMajor -eq 8) {
+                        $server.Query("
+                            SELECT name,
+                                CASE DATABASEPROPERTYEX(name,'status')
+                                    WHEN 'ONLINE'     THEN 0
+                                    WHEN 'RESTORING'  THEN 1
+                                    WHEN 'RECOVERING' THEN 2
+                                    WHEN 'SUSPECT'    THEN 4
+                                    WHEN 'EMERGENCY'  THEN 5
+                                    WHEN 'OFFLINE'    THEN 6
+                                END AS state,
+                                SUSER_SNAME(sid) AS [Owner]
+                            FROM master.dbo.sysdatabases
+                        ")
+                    } else {
+                        $server.Query("SELECT name, state, SUSER_SNAME(owner_sid) AS [Owner] FROM sys.databases")
+                    }
+                } catch {
+                    Stop-Function -Message "Failure" -ErrorRecord $_
                 }
             }
+
             $backed_info = Invoke-QueryRawDatabases
             $backed_info = $backed_info | Where-Object {
                 ($_.name -in $Database -or !$Database) -and
@@ -276,54 +290,69 @@ function Get-DbaDatabase {
                 ($_.state -ne 6 -or !$OnlyAccessible)
             }
 
+
             $inputObject = @()
-            foreach($dt in $backed_info) {
-                $inputObject += $server.Databases[$dt.name]
+            foreach ($dt in $backed_info) {
+                try {
+                    $inputObject += $server.Databases | Where-Object Name -ceq $dt.name
+                } catch {
+                    # I've seen this only once and can not reproduce:
+                    # The following exception occurred while trying to enumerate the collection: "Failed to connect to server XXXXX.database.windows.net.".
+                    # So we implement the fallback that was used before #8333.
+                    Write-Message -Level Verbose -Message "Failure: $_"
+                    $inputObject += $server.Databases[$dt.name]
+                }
             }
-            $inputobject = $inputObject |
-                Where-Object {
-                ($_.Name -in $Database -or !$Database) -and
-                ($_.Name -notin $ExcludeDatabase -or !$ExcludeDatabase) -and
-                ($_.Owner -in $Owner -or !$Owner) -and
-                $_.ReadOnly -in $Readonly -and
-                $_.IsAccessible -in $AccessibleFilter -and
-                $_.IsSystemObject -in $DBType -and
-                ((Compare-Object @($_.Status.tostring().split(',').trim()) $Status -ExcludeDifferent -IncludeEqual).inputobject.count -ge 1 -or !$status) -and
-                $_.RecoveryModel -in $RecoveryModel -and
-                $_.EncryptionEnabled -in $Encrypt
+            if ($server.isAzure) {
+                $inputObject = $inputObject |
+                    Where-Object {
+                        ($_.Name -in $Database -or !$Database) -and
+                        ($_.Name -notin $ExcludeDatabase -or !$ExcludeDatabase) -and
+                        ($_.Owner -in $Owner -or !$Owner) -and
+                        ($_.RecoveryModel -in $RecoveryModel -or !$_.RecoveryModel) -and
+                        $_.EncryptionEnabled -in $Encrypt
+                    }
+            } else {
+                $inputObject = $inputObject |
+                    Where-Object {
+                        ($_.Name -in $Database -or !$Database) -and
+                        ($_.Name -notin $ExcludeDatabase -or !$ExcludeDatabase) -and
+                        ($_.Owner -in $Owner -or !$Owner) -and
+                        $_.ReadOnly -in $Readonly -and
+                        $_.IsAccessible -in $AccessibleFilter -and
+                        $_.IsSystemObject -in $DBType -and
+                        ((Compare-Object @($_.Status.tostring().split(',').trim()) $Status -ExcludeDifferent -IncludeEqual).inputobject.count -ge 1 -or !$status) -and
+                        ($_.RecoveryModel -in $RecoveryModel -or !$_.RecoveryModel) -and
+                        $_.EncryptionEnabled -in $Encrypt
+                    }
             }
             if ($NoFullBackup -or $NoFullBackupSince) {
-                $dabs = (Get-DbaBackupHistory -SqlInstance $server -LastFull )
-                if ($null -ne $NoFullBackupSince) {
-                    $dabsWithinScope = ($dabs | Where-Object End -lt $NoFullBackupSince)
-
-                    $inputobject = $inputobject | Where-Object { $_.Name -in $dabsWithinScope.Database -and $_.Name -ne 'tempdb' }
-                }
-                else {
-                    $inputObject = $inputObject | Where-Object { $_.Name -notin $dabs.Database -and $_.Name -ne 'tempdb' }
+                $lastFullBackups = Get-DbaDbBackupHistory -SqlInstance $server -LastFull
+                $lastCopyOnlyBackups = Get-DbaDbBackupHistory -SqlInstance $server -LastFull -IncludeCopyOnly | Where-Object IsCopyOnly
+                if ($NoFullBackupSince) {
+                    $lastFullBackups = $lastFullBackups | Where-Object End -gt $NoFullBackupSince
+                    $lastCopyOnlyBackups = $lastCopyOnlyBackups | Where-Object End -gt $NoFullBackupSince
                 }
 
+                $hasCopyOnly = $inputObject | Compare-DbaCollationSensitiveObject -Property Name -In -Value $lastCopyOnlyBackups.Database -Collation $server.Collation
+                $inputObject = $inputObject | Where-Object Name -cne 'tempdb'
+                $inputObject = $inputObject | Compare-DbaCollationSensitiveObject -Property Name -NotIn -Value $lastFullBackups.Database -Collation $server.Collation
             }
             if ($NoLogBackup -or $NoLogBackupSince) {
-                $dabs = (Get-DbaBackupHistory -SqlInstance $server -LastLog )
-                if ($null -ne $NoLogBackupSince) {
-                    $dabsWithinScope = ($dabs | Where-Object End -lt $NoLogBackupSince)
-                    $inputobject = $inputobject |
-                        Where-Object { $_.Name -in $dabsWithinScope.Database -and $_.Name -ne 'tempdb' -and $_.RecoveryModel -ne 'Simple' }
+                if (!$NoLogBackupSince) {
+                    $NoLogBackupSince = New-Object -TypeName DateTime
+                    $NoLogBackupSince = $NoLogBackupSince.AddMilliSeconds(1)
                 }
-                else {
-                    $inputobject = $inputObject |
-                        Where-Object { $_.Name -notin $dabs.Database -and $_.Name -ne 'tempdb' -and $_.RecoveryModel -ne 'Simple' }
-                }
+                $inputObject = $inputObject | Where-Object { $_.LastLogBackupDate -lt $NoLogBackupSince -and $_.RecoveryModel -ne 'Simple' }
             }
 
             $defaults = 'ComputerName', 'InstanceName', 'SqlInstance', 'Name', 'Status', 'IsAccessible', 'RecoveryModel',
-            'LogReuseWaitStatus', 'Size as SizeMB', 'CompatibilityLevel as Compatibility', 'Collation', 'Owner',
+            'LogReuseWaitStatus', 'Size as SizeMB', 'CompatibilityLevel as Compatibility', 'Collation', 'Owner', 'EncryptionEnabled as Encrypted',
             'LastBackupDate as LastFullBackup', 'LastDifferentialBackupDate as LastDiffBackup',
             'LastLogBackupDate as LastLogBackup'
 
-            if ($NoFullBackup -or $NoFullBackupSince -or $NoLogBackup -or $NoLogBackupSince) {
-                $defaults += ('Notes')
+            if ($NoFullBackup -or $NoFullBackupSince) {
+                $defaults += ('BackupStatus')
             }
             if ($IncludeLastUsed) {
                 # Add Last Used to the default view
@@ -331,27 +360,25 @@ function Get-DbaDatabase {
             }
 
             try {
-                foreach ($db in $inputobject) {
+                foreach ($db in $inputObject) {
 
-                    $Notes = $null
+                    $backupStatus = $null
                     if ($NoFullBackup -or $NoFullBackupSince) {
-                        if (@($db.EnumBackupSets()).count -eq @($db.EnumBackupSets() | Where-Object { $_.IsCopyOnly }).count -and (@($db.EnumBackupSets()).count -gt 0)) {
-                            $Notes = "Only CopyOnly backups"
+                        if ($db -cin $hasCopyOnly) {
+                            $backupStatus = "Only CopyOnly backups"
                         }
                     }
 
                     $lastusedinfo = $dblastused | Where-Object { $_.dbname -eq $db.name }
-                    Add-Member -Force -InputObject $db -MemberType NoteProperty BackupStatus -value $Notes
-                    Add-Member -Force -InputObject $db -MemberType NoteProperty -Name ComputerName -value $server.NetName
-                    Add-Member -Force -InputObject $db -MemberType NoteProperty -Name InstanceName -value $server.ServiceName
-                    Add-Member -Force -InputObject $db -MemberType NoteProperty -Name SqlInstance -value $server.DomainInstanceName
-                    Add-Member -Force -InputObject $db -MemberType NoteProperty -Name LastRead -value $lastusedinfo.last_read
-                    Add-Member -Force -InputObject $db -MemberType NoteProperty -Name LastWrite -value $lastusedinfo.last_write
+                    Add-Member -Force -InputObject $db -MemberType NoteProperty -Name BackupStatus -Value $backupStatus
+                    Add-Member -Force -InputObject $db -MemberType NoteProperty -Name ComputerName -Value $server.ComputerName
+                    Add-Member -Force -InputObject $db -MemberType NoteProperty -Name InstanceName -Value $server.ServiceName
+                    Add-Member -Force -InputObject $db -MemberType NoteProperty -Name SqlInstance -Value $server.DomainInstanceName
+                    Add-Member -Force -InputObject $db -MemberType NoteProperty -Name LastRead -Value $lastusedinfo.last_read
+                    Add-Member -Force -InputObject $db -MemberType NoteProperty -Name LastWrite -Value $lastusedinfo.last_write
                     Select-DefaultView -InputObject $db -Property $defaults
-                    #try { $server.Databases.Refresh() } catch {}
                 }
-            }
-            catch {
+            } catch {
                 Stop-Function -ErrorRecord $_ -Target $instance -Message "Failure. Collection may have been modified. If so, please use parens (Get-DbaDatabase ....) | when working with commands that modify the collection such as Remove-DbaDatabase." -Continue
             }
         }

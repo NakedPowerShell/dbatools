@@ -1,90 +1,92 @@
 function Find-DbaTrigger {
     <#
-        .SYNOPSIS
-            Returns all triggers that contain a specific case-insensitive string or regex pattern.
+    .SYNOPSIS
+        Returns all triggers that contain a specific case-insensitive string or regex pattern.
 
-        .DESCRIPTION
-            This function search on Instance, Database and Object level.
-            If you specify one or more databases, search on Server level will not be preformed.
+    .DESCRIPTION
+        This function search on Instance, Database and Object level.
+        If you specify one or more databases, search on Server level will not be preformed.
 
-        .PARAMETER SqlInstance
-            SQL Server name or SMO object representing the SQL Server to connect to. This can be a collection and receive pipeline input
+    .PARAMETER SqlInstance
+        The target SQL Server instance or instances. This can be a collection and receive pipeline input
 
-        .PARAMETER SqlCredential
-            Login to the target instance using alternative credentials. Windows and SQL Authentication supported. Accepts credential objects (Get-Credential)
+    .PARAMETER SqlCredential
+        Login to the target instance using alternative credentials. Accepts PowerShell credentials (Get-Credential).
 
-        .PARAMETER Database
-            The database(s) to process - this list is auto-populated from the server. If unspecified, all databases will be processed.
+        Windows Authentication, SQL Server Authentication, Active Directory - Password, and Active Directory - Integrated are all supported.
 
-        .PARAMETER ExcludeDatabase
-            The database(s) to exclude - this list is auto-populated from the server
+        For MFA support, please use Connect-DbaInstance.
 
-        .PARAMETER Pattern
-            String pattern that you want to search for in the trigger textbody
+    .PARAMETER Database
+        The database(s) to process - this list is auto-populated from the server. If unspecified, all databases will be processed.
 
-        .PARAMETER TriggerLevel
-            Allows specify the trigger level that you want to search. By default is All (Server, Database, Object).
+    .PARAMETER ExcludeDatabase
+        The database(s) to exclude - this list is auto-populated from the server
 
-        .PARAMETER IncludeSystemObjects
-            By default, system triggers are ignored but you can include them within the search using this parameter.
+    .PARAMETER Pattern
+        String pattern that you want to search for in the trigger text body
 
-            Warning - this will likely make it super slow if you run it on all databases.
+    .PARAMETER TriggerLevel
+        Allows specify the trigger level that you want to search. By default is All (Server, Database, Object).
 
-        .PARAMETER IncludeSystemDatabases
-            By default system databases are ignored but you can include them within the search using this parameter
+    .PARAMETER IncludeSystemObjects
+        By default, system triggers are ignored but you can include them within the search using this parameter.
 
-        .PARAMETER EnableException
-            By default, when something goes wrong we try to catch it, interpret it and give you a friendly warning message.
-            This avoids overwhelming you with "sea of red" exceptions, but is inconvenient because it basically disables advanced scripting.
-            Using this switch turns this "nice by default" feature off and enables you to catch exceptions with your own try/catch.
+        Warning - this will likely make it super slow if you run it on all databases.
 
-        .NOTES
-            Tags: Trigger
-            Author: Cláudio Silva, @ClaudioESSilva
+    .PARAMETER IncludeSystemDatabases
+        By default system databases are ignored but you can include them within the search using this parameter
 
-            Website: https://dbatools.io
-            Copyright: (C) Chrissy LeMaire, clemaire@gmail.com
-            License: MIT https://opensource.org/licenses/MIT
+    .PARAMETER EnableException
+        By default, when something goes wrong we try to catch it, interpret it and give you a friendly warning message.
+        This avoids overwhelming you with "sea of red" exceptions, but is inconvenient because it basically disables advanced scripting.
+        Using this switch turns this "nice by default" feature off and enables you to catch exceptions with your own try/catch.
 
-        .LINK
-            https://dbatools.io/Find-DbaTrigger
+    .NOTES
+        Tags: Trigger, Lookup
+        Author: Claudio Silva (@ClaudioESSilva)
 
-        .EXAMPLE
-            Find-DbaTrigger -SqlInstance DEV01 -Pattern whatever
+        Website: https://dbatools.io
+        Copyright: (c) 2018 by dbatools, licensed under MIT
+        License: MIT https://opensource.org/licenses/MIT
 
-            Searches all user databases triggers for "whatever" in the textbody
+    .LINK
+        https://dbatools.io/Find-DbaTrigger
 
-        .EXAMPLE
-            Find-DbaTrigger -SqlInstance sql2016 -Pattern '\w+@\w+\.\w+'
+    .EXAMPLE
+        PS C:\> Find-DbaTrigger -SqlInstance DEV01 -Pattern whatever
 
-            Searches all databases for all triggers that contain a valid email pattern in the textbody
+        Searches all user databases triggers for "whatever" in the text body
 
-        .EXAMPLE
-            Find-DbaTrigger -SqlInstance DEV01 -Database MyDB -Pattern 'some string' -Verbose
+    .EXAMPLE
+        PS C:\> Find-DbaTrigger -SqlInstance sql2016 -Pattern '\w+@\w+\.\w+'
 
-            Searches in "mydb" database triggers for "some string" in the textbody
+        Searches all databases for all triggers that contain a valid email pattern in the text body
 
-        .EXAMPLE
-            Find-DbaTrigger -SqlInstance sql2016 -Database MyDB -Pattern RUNTIME -IncludeSystemObjects
+    .EXAMPLE
+        PS C:\> Find-DbaTrigger -SqlInstance DEV01 -Database MyDB -Pattern 'some string' -Verbose
 
-            Searches in "mydb" database triggers for "runtime" in the textbody
+        Searches in "mydb" database triggers for "some string" in the text body
+
+    .EXAMPLE
+        PS C:\> Find-DbaTrigger -SqlInstance sql2016 -Database MyDB -Pattern RUNTIME -IncludeSystemObjects
+
+        Searches in "mydb" database triggers for "runtime" in the text body
+
     #>
     [CmdletBinding()]
-    Param (
-        [parameter(Position = 0, Mandatory = $true, ValueFromPipeline = $True)]
-        [Alias("ServerInstance", "SqlServer", "SqlServers")]
+    param (
+        [parameter(Mandatory, ValueFromPipeline)]
         [DbaInstanceParameter[]]$SqlInstance,
         [PSCredential]$SqlCredential,
-        [Alias("Databases")]
         [object[]]$Database,
         [object[]]$ExcludeDatabase,
-        [parameter(Mandatory = $true)]
+        [parameter(Mandatory)]
         [string]$Pattern,
         [ValidateSet('All', 'Server', 'Database', 'Object')]
         [string]$TriggerLevel = 'All',
         [switch]$IncludeSystemObjects,
         [switch]$IncludeSystemDatabases,
-        [Alias('Silent')]
         [switch]$EnableException
     )
 
@@ -95,16 +97,15 @@ function Find-DbaTrigger {
         if (!$IncludeSystemObjects) { $sqlTableTriggers = "$sqlTableTriggers AND tr.is_ms_shipped = 0" }
 
         $everyserverstcount = 0
+
+        $eol = [System.Environment]::NewLine
     }
     process {
-        foreach ($Instance in $SqlInstance) {
+        foreach ($instance in $SqlInstance) {
             try {
-                Write-Message -Level Verbose -Message "Connecting to $Instance"
-                $server = Connect-SqlInstance -SqlInstance $Instance -SqlCredential $SqlCredential
-            }
-            catch {
-                Write-Message -Level Warning -Message "Failed to connect to: $Instance"
-                continue
+                $server = Connect-DbaInstance -SqlInstance $instance -SqlCredential $SqlCredential
+            } catch {
+                Stop-Function -Message "Failure" -Category ConnectionError -ErrorRecord $_ -Target $instance -Continue
             }
 
             if ($server.versionMajor -lt 9) {
@@ -119,14 +120,15 @@ function Find-DbaTrigger {
                     Write-Message -Level Debug -Message "Looking in Trigger: $trigger TextBody for $pattern"
                     if ($trigger.TextBody -match $Pattern) {
 
-                        $triggerText = $trigger.TextBody.split("`n`r")
+                        $triggerText = $trigger.TextBody.split($eol)
                         $trTextFound = $triggerText | Select-String -Pattern $Pattern | ForEach-Object { "(LineNumber: $($_.LineNumber)) $($_.ToString().Trim())" }
 
                         [PSCustomObject]@{
-                            ComputerName     = $server.NetName
+                            ComputerName     = $server.ComputerName
                             SqlInstance      = $server.ServiceName
                             TriggerLevel     = "Server"
                             Database         = $null
+                            DatabaseId       = $null
                             Object           = $null
                             Name             = $trigger.Name
                             IsSystemObject   = $trigger.IsSystemObject
@@ -143,8 +145,7 @@ function Find-DbaTrigger {
 
             if ($IncludeSystemDatabases) {
                 $dbs = $server.Databases | Where-Object { $_.Status -eq "normal" }
-            }
-            else {
+            } else {
                 $dbs = $server.Databases | Where-Object { $_.Status -eq "normal" -and $_.IsSystemObject -eq $false }
             }
 
@@ -183,14 +184,15 @@ function Find-DbaTrigger {
                                 if ($row.TextBody -match $Pattern) {
                                     $tr = $db.Triggers | Where-Object name -eq $row.name
 
-                                    $triggerText = $tr.TextBody.split("`n`r")
+                                    $triggerText = $tr.TextBody.split($eol)
                                     $trTextFound = $triggerText | Select-String -Pattern $Pattern | ForEach-Object { "(LineNumber: $($_.LineNumber)) $($_.ToString().Trim())" }
 
                                     [PSCustomObject]@{
-                                        ComputerName     = $server.NetName
+                                        ComputerName     = $server.ComputerName
                                         SqlInstance      = $server.ServiceName
                                         TriggerLevel     = "Database"
                                         Database         = $db.name
+                                        DatabaseId       = $db.ID
                                         Object           = $tr.Parent
                                         Name             = $tr.Name
                                         IsSystemObject   = $tr.IsSystemObject
@@ -220,16 +222,21 @@ function Find-DbaTrigger {
                                 Write-Message -Level Verbose -Message "Looking in trigger $trigger for textBody with pattern $pattern in object $triggerParentSchema.$triggerParent at database $db"
                                 if ($row.TextBody -match $Pattern) {
 
-                                    $tr = ($db.Tables | Where-Object {$_.Name -eq $triggerParent -and $_.Schema -eq $triggerParentSchema}).Triggers | Where-Object name -eq $row.name
+                                    $tr = ($db.Tables | Where-Object { $_.Name -eq $triggerParent -and $_.Schema -eq $triggerParentSchema }).Triggers | Where-Object name -eq $row.name
+                                    if ($null -eq $tr) {
+                                        Write-Message -Level Verbose -Message "Could not find table named $($row.Name). Will try to find on Views."
+                                        $tr = ($db.Views | Where-Object { $_.Name -eq $triggerParent -and $_.Schema -eq $triggerParentSchema }).Triggers | Where-Object name -eq $row.name
+                                    }
 
-                                    $triggerText = $tr.TextBody.split("`n`r")
+                                    $triggerText = $tr.TextBody.split($eol)
                                     $trTextFound = $triggerText | Select-String -Pattern $Pattern | ForEach-Object { "(LineNumber: $($_.LineNumber)) $($_.ToString().Trim())" }
 
                                     [PSCustomObject]@{
-                                        ComputerName     = $server.NetName
+                                        ComputerName     = $server.ComputerName
                                         SqlInstance      = $server.ServiceName
                                         TriggerLevel     = "Object"
                                         Database         = $db.name
+                                        DatabaseId       = $db.ID
                                         Object           = $tr.Parent
                                         Name             = $tr.Name
                                         IsSystemObject   = $tr.IsSystemObject
@@ -242,8 +249,7 @@ function Find-DbaTrigger {
                                 }
                             }
                         }
-                    }
-                    else {
+                    } else {
                         if ($TriggerLevel -in @('All', 'Database')) {
                             #Get Database Level triggers (DDL)
                             $triggers = $db.Triggers
@@ -257,14 +263,15 @@ function Find-DbaTrigger {
                                 Write-Message -Level Verbose -Message "Looking in trigger $trigger for textBody with pattern $pattern on database $db"
                                 if ($tr.TextBody -match $Pattern) {
 
-                                    $triggerText = $tr.TextBody.split("`n`r")
+                                    $triggerText = $tr.TextBody.split($eol)
                                     $trTextFound = $triggerText | Select-String -Pattern $Pattern | ForEach-Object { "(LineNumber: $($_.LineNumber)) $($_.ToString().Trim())" }
 
                                     [PSCustomObject]@{
-                                        ComputerName     = $server.NetName
+                                        ComputerName     = $server.ComputerName
                                         SqlInstance      = $server.ServiceName
                                         TriggerLevel     = "Database"
                                         Database         = $db.name
+                                        DatabaseId       = $db.ID
                                         Object           = $tr.Parent
                                         Name             = $tr.Name
                                         IsSystemObject   = $tr.IsSystemObject
@@ -280,7 +287,8 @@ function Find-DbaTrigger {
 
                         if ($TriggerLevel -in @('All', 'Object')) {
                             #Get Object Level triggers (DML)
-                            $triggers = $db.Tables | ForEach-Object {$_.Triggers}
+                            $triggers = $db.Tables | ForEach-Object { $_.Triggers }
+                            $triggers += $db.Views | ForEach-Object { $_.Triggers }
 
                             $triggercount = 0
 
@@ -291,14 +299,15 @@ function Find-DbaTrigger {
                                 Write-Message -Level Verbose -Message "Looking in trigger $trigger for textBody with pattern $pattern in object $($tr.Parent) at database $db"
                                 if ($tr.TextBody -match $Pattern) {
 
-                                    $triggerText = $tr.TextBody.split("`n`r")
+                                    $triggerText = $tr.TextBody.split($eol)
                                     $trTextFound = $triggerText | Select-String -Pattern $Pattern | ForEach-Object { "(LineNumber: $($_.LineNumber)) $($_.ToString().Trim())" }
 
                                     [PSCustomObject]@{
-                                        ComputerName     = $server.NetName
+                                        ComputerName     = $server.ComputerName
                                         SqlInstance      = $server.ServiceName
                                         TriggerLevel     = "Object"
                                         Database         = $db.name
+                                        DatabaseId       = $db.ID
                                         Object           = $tr.Parent
                                         Name             = $tr.Name
                                         IsSystemObject   = $tr.IsSystemObject
